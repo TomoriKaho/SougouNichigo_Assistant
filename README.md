@@ -1,0 +1,1 @@
+# SougouNichigo_Assistant
