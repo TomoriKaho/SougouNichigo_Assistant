@@ -4,14 +4,156 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的网页</title>
+    <title>日语单词记忆辅助</title>
+    <meta name="description" content="按教材、课次、单元和词表类型筛选的纯前端日语单词辅助工具。">
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-    <h1>你好呀，这是我的 GitHub Pages 网页！</h1>
-    <p>如果你看到这句话，说明发布成功啦。</p>
-    <button id="btn">点我</button>
+    <div class="page-shell">
+        <header class="hero card">
+            <div class="hero-copy">
+                <p class="eyebrow">GitHub Pages / Pure Frontend</p>
+                <h1>日语单词记忆辅助</h1>
+                <p class="hero-text">
+                    以教材、课次、单元和词表类型为范围，先查词表，再做自评练习。
+                </p>
+            </div>
+            <div class="hero-stats">
+                <article class="stat-card">
+                    <span class="stat-label">教材数</span>
+                    <strong class="stat-value" id="dataset-count">0</strong>
+                </article>
+                <article class="stat-card">
+                    <span class="stat-label">总词条</span>
+                    <strong class="stat-value" id="total-count">0</strong>
+                </article>
+                <article class="stat-card">
+                    <span class="stat-label">当前范围</span>
+                    <strong class="stat-value" id="filtered-count">0</strong>
+                </article>
+            </div>
+        </header>
+
+        <main class="workspace">
+            <section class="card filter-card">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">Scope</p>
+                        <h2>筛选范围</h2>
+                    </div>
+                    <p class="section-note" id="filter-summary">正在加载教材数据…</p>
+                </div>
+
+                <div class="filters">
+                    <label class="field">
+                        <span class="field-label">教材</span>
+                        <select id="filter-textbook"></select>
+                    </label>
+                    <label class="field">
+                        <span class="field-label">课次</span>
+                        <select id="filter-lesson"></select>
+                    </label>
+                    <label class="field">
+                        <span class="field-label">单元</span>
+                        <select id="filter-unit"></select>
+                    </label>
+                    <label class="field">
+                        <span class="field-label">词表类型</span>
+                        <select id="filter-vocab-type"></select>
+                    </label>
+                </div>
+
+                <p class="status-banner" id="load-status" hidden></p>
+            </section>
+
+            <section class="card content-card">
+                <div class="toolbar">
+                    <div class="view-switch" role="tablist" aria-label="主视图切换">
+                        <button class="view-button is-active" type="button" data-view="list" role="tab"
+                            aria-selected="true">
+                            词表查看
+                        </button>
+                        <button class="view-button" type="button" data-view="practice" role="tab"
+                            aria-selected="false">
+                            练习
+                        </button>
+                    </div>
+                </div>
+
+                <section id="view-list" class="view-panel">
+                    <div class="panel-header">
+                        <div>
+                            <p class="eyebrow">Vocabulary Table</p>
+                            <h2>词表查看</h2>
+                        </div>
+                        <label class="field compact-field">
+                            <span class="field-label">每页条数</span>
+                            <select id="page-size">
+                                <option value="20">20</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    <div class="result-summary" id="list-summary"></div>
+
+                    <div class="table-shell">
+                        <table class="vocab-table">
+                            <thead id="table-head"></thead>
+                            <tbody id="table-body"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="pagination">
+                        <button class="secondary-button" type="button" id="page-prev">上一页</button>
+                        <div class="pagination-meta" id="page-meta">第 1 / 1 页</div>
+                        <button class="secondary-button" type="button" id="page-next">下一页</button>
+                    </div>
+                </section>
+
+                <section id="view-practice" class="view-panel" hidden>
+                    <div class="panel-header">
+                        <div>
+                            <p class="eyebrow">Practice</p>
+                            <h2>练习</h2>
+                        </div>
+                        <button class="primary-button" type="button" id="practice-start">开始本轮</button>
+                    </div>
+
+                    <div class="practice-overview">
+                        <div class="practice-chip">
+                            <span>本轮范围</span>
+                            <strong id="practice-total">0 条</strong>
+                        </div>
+                        <div class="practice-chip">
+                            <span>认识</span>
+                            <strong id="practice-known">0</strong>
+                        </div>
+                        <div class="practice-chip">
+                            <span>不认识</span>
+                            <strong id="practice-unknown">0</strong>
+                        </div>
+                        <div class="practice-chip">
+                            <span>剩余</span>
+                            <strong id="practice-remaining">0</strong>
+                        </div>
+                    </div>
+
+                    <div class="progress-track" aria-hidden="true">
+                        <div class="progress-fill" id="practice-progress"></div>
+                    </div>
+
+                    <div id="practice-stage" class="practice-stage"></div>
+                </section>
+            </section>
+        </main>
+
+        <footer class="footer-note">
+            纯前端静态项目，可直接部署到 GitHub Pages。
+        </footer>
+    </div>
 
     <script src="script.js"></script>
 </body>
