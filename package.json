@@ -1,0 +1,19 @@
+{
+  "name": "sounichinavi",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SounichiNavi / 総日ナビ 管理系统",
+  "scripts": {
+    "server": "npm --prefix server start",
+    "admin:serve": "npm --prefix admin-web run serve",
+    "admin:build": "npm --prefix admin-web run build",
+    "install:all": "npm install --prefix server && npm install --prefix admin-web"
+  },
+  "keywords": [
+    "japanese",
+    "vocabulary",
+    "admin"
+  ],
+  "author": "",
+  "license": "MIT"
+}
