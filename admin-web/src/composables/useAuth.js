@@ -1,28 +1,36 @@
 import { computed, reactive } from 'vue';
-import { apiRequest, ApiError } from '../utils/apiClient';
-
-const TOKEN_KEY = 'admin_token';
+import {
+  apiRequest,
+  ApiError,
+  clearAuthSession,
+  getAuthMode,
+  getAuthToken,
+  setAuthSession
+} from '../utils/apiClient';
 
 const state = reactive({
   user: null,
-  token: localStorage.getItem(TOKEN_KEY) || '',
+  token: getAuthToken(),
+  mode: getAuthMode(),
   loading: false,
   error: ''
 });
 
 window.addEventListener('auth:expired', () => {
   state.token = '';
+  state.mode = '';
   state.user = null;
-  localStorage.removeItem(TOKEN_KEY);
+  clearAuthSession();
 });
 
-async function login(credentials) {
+async function login(credentials, mode = 'user') {
   state.loading = true;
   state.error = '';
   try {
     const identifier = credentials.identifier || credentials.email || credentials.username;
     if (!identifier || !credentials.password) throw new Error('请输入账号和密码');
-    const data = await apiRequest('/auth/login', {
+    const endpoint = mode === 'admin' ? '/auth/login' : '/api/user/login';
+    const data = await apiRequest(endpoint, {
       method: 'POST',
       body: { identifier, password: credentials.password },
       auth: false
@@ -30,11 +38,38 @@ async function login(credentials) {
 
     state.token = data.token;
     state.user = data.user;
-    localStorage.setItem(TOKEN_KEY, state.token);
+    state.mode = mode;
+    setAuthSession(state.token, mode);
     return true;
   } catch (err) {
     state.error = err instanceof ApiError ? err.message : err.message || '登录失败';
     return false;
+  } finally {
+    state.loading = false;
+  }
+}
+
+async function register(payload) {
+  state.loading = true;
+  state.error = '';
+  try {
+    const data = await apiRequest('/api/user/register', {
+      method: 'POST',
+      body: payload,
+      auth: false
+    });
+
+    state.token = data.token;
+    state.user = data.user;
+    state.mode = 'user';
+    setAuthSession(state.token, 'user');
+    return { ok: true, fieldErrors: null };
+  } catch (err) {
+    state.error = err instanceof ApiError ? err.message : err.message || '注册失败';
+    return {
+      ok: false,
+      fieldErrors: err instanceof ApiError ? err.fieldErrors : null
+    };
   } finally {
     state.loading = false;
   }
@@ -46,7 +81,8 @@ async function fetchMe() {
     return null;
   }
   try {
-    const data = await apiRequest('/auth/me');
+    const endpoint = state.mode === 'admin' ? '/auth/me' : '/api/user/me';
+    const data = await apiRequest(endpoint);
     state.user = data.user;
     return state.user;
   } catch (error) {
@@ -57,30 +93,37 @@ async function fetchMe() {
 
 function logout() {
   const token = state.token;
+  const mode = state.mode;
   state.token = '';
+  state.mode = '';
   state.user = null;
-  localStorage.removeItem(TOKEN_KEY);
-  if (token) apiRequest('/auth/logout', { method: 'POST' }).catch(() => {});
+  clearAuthSession();
+  if (token && mode === 'admin') apiRequest('/auth/logout', { method: 'POST' }).catch(() => {});
 }
 
 const isAuthenticated = computed(() => Boolean(state.token && state.user));
-const isDev = computed(() => state.user?.role === 'dev');
-const isAdmin = computed(() => state.user?.role === 'admin');
-const isPrivileged = computed(() => ['dev', 'admin'].includes(state.user?.role));
+const isAdminMode = computed(() => state.mode === 'admin');
+const isDev = computed(() => isAdminMode.value && state.user?.role === 'dev');
+const isAdmin = computed(() => isAdminMode.value && state.user?.role === 'admin');
+const isPrivileged = computed(() => isAdminMode.value && ['dev', 'admin'].includes(state.user?.role));
 const isTeacher = computed(() => state.user?.user_type === 'teacher');
 const isInitialDev = computed(() => Boolean(state.user?.isInitialDev));
+const isUserMode = computed(() => state.mode === 'user');
 
 export function useAuth() {
   return {
     state,
     login,
+    register,
     logout,
     fetchMe,
     isAuthenticated,
+    isAdminMode,
     isDev,
     isAdmin,
     isPrivileged,
     isTeacher,
-    isInitialDev
+    isInitialDev,
+    isUserMode
   };
 }

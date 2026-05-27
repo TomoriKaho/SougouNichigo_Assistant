@@ -1,14 +1,14 @@
 <template>
   <div class="dashboard-page">
-    <div class="dashboard-top-row">
+    <div class="dashboard-top-row" :class="{ 'user-welcome-only': !isPrivileged }">
       <section ref="welcomeCardRef" class="card dashboard-welcome-card">
         <h2 class="dashboard-welcome-text">欢迎回来，{{ welcomeText }}</h2>
         <p class="dashboard-welcome-subtext">
-          在这里，您可以管理综合日语词库、后台用户、用户反馈和数据库备份。
+          {{ welcomeSubtext }}
         </p>
       </section>
 
-      <section class="card dashboard-summary-card">
+      <section v-if="isPrivileged" class="card dashboard-summary-card">
         <h3 class="dashboard-summary-title">管理总览</h3>
         <div class="dashboard-summary-list">
           <button
@@ -50,10 +50,14 @@ import { apiRequest } from '../utils/apiClient';
 import { useAuth } from '../composables/useAuth';
 
 const router = useRouter();
-const { state } = useAuth();
+const { state, isPrivileged } = useAuth();
 const stats = ref(null);
 
 const welcomeText = computed(() => state.user?.username || state.user?.email || '管理员');
+const welcomeSubtext = computed(() => {
+  if (!isPrivileged.value) return '您已登录総日ナビ。';
+  return '在这里，您可以管理综合日语词库、后台用户、用户反馈和数据库备份。';
+});
 const statCards = computed(() => [
   {
     key: 'users',
@@ -80,6 +84,7 @@ function goTo(routeName) {
 }
 
 async function loadStats() {
+  if (!isPrivileged.value) return;
   try {
     stats.value = await apiRequest('/stats');
   } catch (error) {

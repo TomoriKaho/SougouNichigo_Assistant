@@ -1,8 +1,9 @@
 const jwt = require('jsonwebtoken')
 const { User } = require('../models/User')
+const { getEnv, requireEnv } = require('../config/env')
 
-const USER_JWT_SECRET = process.env.USER_JWT_SECRET || 'change-user-secret'
-const USER_JWT_EXPIRES_IN = process.env.USER_JWT_EXPIRES_IN || '30d'
+const USER_JWT_SECRET = requireEnv('USER_JWT_SECRET')
+const USER_JWT_EXPIRES_IN = getEnv('USER_JWT_EXPIRES_IN', '30d')
 
 function signUserToken(user) {
   return jwt.sign(

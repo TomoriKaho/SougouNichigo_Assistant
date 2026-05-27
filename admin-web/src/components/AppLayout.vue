@@ -6,9 +6,9 @@
       </div>
       <nav>
         <RouterLink to="/" end>仪表盘</RouterLink>
-        <RouterLink to="/users">用户管理</RouterLink>
-        <RouterLink to="/vocabulary">词库管理</RouterLink>
-        <RouterLink to="/feedback">反馈处理</RouterLink>
+        <RouterLink v-if="isPrivileged" to="/users">用户管理</RouterLink>
+        <RouterLink v-if="isPrivileged" to="/vocabulary">词库管理</RouterLink>
+        <RouterLink v-if="isPrivileged" to="/feedback">反馈处理</RouterLink>
         <RouterLink v-if="isDev" to="/database">数据库管理</RouterLink>
       </nav>
     </aside>
@@ -20,7 +20,7 @@
         </div>
         <div class="topbar-right" v-if="user">
           <span class="chip identity-chip">{{ user.username || user.email }}</span>
-          <span class="chip role-chip" :class="user.role">{{ roleLabel }}</span>
+          <span class="chip role-chip" :class="roleClass">{{ roleLabel }}</span>
           <span class="chip type-chip" :class="userTypeClass">{{ userTypeLabel }}</span>
           <button class="ghost" @click="handleLogout">退出</button>
         </div>
@@ -39,7 +39,7 @@ import { useAuth } from '../composables/useAuth';
 
 const route = useRoute();
 const router = useRouter();
-const { state, logout, isDev } = useAuth();
+const { state, logout, isDev, isPrivileged } = useAuth();
 
 const titles = {
   Dashboard: '仪表盘',
@@ -50,11 +50,19 @@ const titles = {
 };
 
 const user = computed(() => state.user);
-const title = computed(() => titles[route.name] || '総日ナビ');
+const title = computed(() => {
+  if (route.name === 'Dashboard' && !isPrivileged.value) return '欢迎页';
+  return titles[route.name] || '総日ナビ';
+});
 const roleLabel = computed(() => {
+  if (!isPrivileged.value) return 'USER';
   if (user.value?.role === 'dev') return 'DEV';
   if (user.value?.role === 'admin') return 'ADMIN';
   return user.value?.role || '-';
+});
+const roleClass = computed(() => {
+  if (!isPrivileged.value) return 'user';
+  return user.value?.role || 'user';
 });
 const userTypeLabel = computed(() => {
   if (user.value?.user_type === 'teacher') return '教师用户';

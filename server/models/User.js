@@ -5,7 +5,7 @@ const ALLOWED_ROLES = ['dev', 'admin', 'user']
 const ALLOWED_USER_TYPES = ['student', 'teacher']
 
 function normalizeEmail(email) {
-  const value = String(email || '').trim()
+  const value = String(email || '').trim().toLowerCase()
   return value ? value : null
 }
 
@@ -66,11 +66,25 @@ class User {
   static findRawByIdentifier(identifier) {
     const value = String(identifier || '').trim()
     if (!value) return null
-    return userDb.prepare('SELECT * FROM users WHERE username = ? OR email = ?').get(value, value)
+    return userDb.prepare('SELECT * FROM users WHERE username = ? OR email = ?').get(value, value.toLowerCase())
   }
 
   static findRawByUsername(username) {
     return userDb.prepare('SELECT * FROM users WHERE username = ?').get(username)
+  }
+
+  static findRawInitialDev() {
+    return userDb.prepare('SELECT * FROM users WHERE is_initial_dev = 1 ORDER BY id LIMIT 1').get()
+  }
+
+  static findRawInitialAdmin() {
+    return userDb.prepare('SELECT * FROM users WHERE is_initial_admin = 1 ORDER BY id LIMIT 1').get()
+  }
+
+  static findRawByEmail(email) {
+    const value = normalizeEmail(email)
+    if (!value) return null
+    return userDb.prepare('SELECT * FROM users WHERE email = ?').get(value)
   }
 
   static verifyPassword(password, hashed) {
@@ -159,6 +173,14 @@ class User {
 
   static delete(id) {
     return userDb.prepare('DELETE FROM users WHERE id = ?').run(id)
+  }
+
+  static clearInitialDevExcept(id) {
+    return userDb.prepare('UPDATE users SET is_initial_dev = 0 WHERE id != ? AND is_initial_dev = 1').run(id)
+  }
+
+  static clearInitialAdminExcept(id) {
+    return userDb.prepare('UPDATE users SET is_initial_admin = 0 WHERE id != ? AND is_initial_admin = 1').run(id)
   }
 
   static counts() {

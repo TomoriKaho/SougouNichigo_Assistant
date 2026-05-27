@@ -23,7 +23,7 @@ data/Vocabulary_4.json
 
 ## 初始账号
 
-首次启动会创建以下账号，可在 `server/.env` 中覆盖：
+后端实际读取 `server/.env`，不会读取 `server/.env.example`。首次启动会创建以下账号，可在 `server/.env` 中覆盖：
 
 ```text
 dev / SounichiNaviDev2026!

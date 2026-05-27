@@ -44,6 +44,9 @@ html,
 body,
 #app {
   min-height: 100%;
+  font-size: 16px;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -52,6 +55,7 @@ body {
   background: var(--bg);
   color: var(--text);
   background-image: none;
+  font-size: 16px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -65,14 +69,14 @@ a {
 
 .layout {
   display: grid;
-  grid-template-columns: 212px 1fr;
+  grid-template-columns: 240px minmax(0, 1fr);
   min-height: 100vh;
 }
 
 .sidebar {
   background: var(--theme-red);
   color: rgba(255, 245, 230, 0.82);
-  padding: 0 24px 24px;
+  padding: 0 22px 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -85,14 +89,15 @@ a {
 
 .sidebar .brand {
   font-weight: 700;
-  font-size: 20px;
+  font-size: 22px;
   color: #ffffff;
   letter-spacing: 2px;
-  text-align: center;
-  padding: 18px 0 15px;
+  text-align: left;
+  padding: 22px 16px 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   line-height: 1.25;
 }
 
@@ -108,8 +113,8 @@ a {
 
 .sidebar a {
   position: relative;
-  padding: 12px 14px;
-  border-radius: 10px;
+  padding: 13px 16px;
+  border-radius: 8px;
   color: rgba(255, 245, 230, 0.78);
   border: 1px solid transparent;
   font-size: 16px;
@@ -143,7 +148,8 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 18px;
+  min-height: 64px;
+  padding: 0 24px;
   background: var(--theme-red);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 10px 30px rgba(101, 0, 13, 0.14);
@@ -151,7 +157,7 @@ a {
 
 .topbar h1 {
   margin: 0;
-  font-size: 24px;
+  font-size: 22px;
   line-height: 1.2;
   color: #fff8ed;
   letter-spacing: 1px;
@@ -310,15 +316,16 @@ button.ghost:hover {
 }
 
 .content {
-  padding: 24px;
+  padding: 28px;
   background: #ffffff;
+  min-width: 0;
 }
 
 .card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 20px;
+  border-radius: 12px;
+  padding: 24px;
   box-shadow: var(--shadow-soft);
 }
 
@@ -337,31 +344,80 @@ button.ghost:hover {
   place-items: center;
   min-height: 100vh;
   background: #ffffff;
-  padding: 16px;
+  padding: 32px;
 }
 
 .login-card {
   width: 100%;
-  max-width: 420px;
+  max-width: 560px;
   background: var(--card);
-  border-radius: 20px;
-  padding: 28px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.26);
+  border-radius: 16px;
+  padding: 44px;
+  box-shadow: 0 24px 60px rgba(101, 0, 13, 0.16);
   border: 1px solid var(--border);
 }
 
 .login-card h1 {
-  margin: 0 0 8px;
+  margin: 0 0 28px;
   color: var(--theme-red);
-  letter-spacing: 3px;
+  font-size: 28px;
+  line-height: 1.25;
+  letter-spacing: 1px;
 }
 
 .login-brand {
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   color: var(--theme-red-dark);
-  font-size: 28px;
+  font-size: 36px;
+  line-height: 1.15;
   font-weight: 800;
-  letter-spacing: 3px;
+  letter-spacing: 2px;
+}
+
+.login-card form {
+  gap: 18px;
+  margin-top: 24px;
+}
+
+.login-card label {
+  font-size: 16px;
+}
+
+.login-card input {
+  min-height: 50px;
+  font-size: 16px;
+}
+
+.login-card button {
+  min-height: 50px;
+  font-size: 16px;
+}
+
+.login-secondary-actions,
+.login-register-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.login-register-actions {
+  margin-top: 2px;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+input.input-error {
+  border-color: #a11d23;
+  box-shadow: 0 0 0 3px rgba(161, 29, 35, 0.12);
+}
+
+input.input-success {
+  border-color: rgba(22, 101, 52, 0.7);
+  box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.1);
 }
 
 form {
@@ -416,6 +472,134 @@ textarea {
   font-weight: 600;
 }
 
+.dashboard-page {
+  width: 100%;
+}
+
+.dashboard-top-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+  gap: 20px;
+  align-items: stretch;
+}
+
+.dashboard-top-row.user-welcome-only {
+  grid-template-columns: 1fr;
+}
+
+.dashboard-welcome-card,
+.dashboard-summary-card {
+  min-height: 180px;
+}
+
+.dashboard-welcome-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.dashboard-welcome-text {
+  margin: 0 0 12px;
+  font-size: 24px;
+  line-height: 1.3;
+  color: var(--theme-red-dark);
+}
+
+.dashboard-welcome-subtext {
+  margin: 0;
+  max-width: 680px;
+  font-size: 16px;
+  color: var(--muted);
+}
+
+.dashboard-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.dashboard-summary-title {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.dashboard-summary-list {
+  display: grid;
+  gap: 10px;
+}
+
+.summary-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 56px;
+  padding: 10px 12px;
+  color: var(--text);
+  background: #fffaf4;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: none;
+  text-align: left;
+}
+
+.summary-item:hover {
+  background: #fff6eb;
+  box-shadow: 0 10px 22px rgba(101, 0, 13, 0.1);
+}
+
+.summary-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.summary-icon {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--theme-red);
+  background: rgba(139, 0, 18, 0.08);
+}
+
+.summary-icon svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.summary-icon circle,
+.summary-icon path {
+  stroke: currentColor;
+}
+
+.summary-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.summary-arrow {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 24px;
+  line-height: 1;
+}
+
 @media (max-width: 960px) {
   .layout {
     grid-template-columns: 1fr;
@@ -435,6 +619,10 @@ textarea {
     min-height: auto;
     overflow: visible;
     padding-right: 0;
+  }
+
+  .dashboard-top-row {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1091,7 +1279,7 @@ textarea {
   .sidebar .brand {
     align-items: flex-start;
     text-align: left;
-    padding: 4px 0 10px;
+    padding: 4px 12px 10px;
     font-size: 19px;
   }
 

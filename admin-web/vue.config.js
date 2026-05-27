@@ -10,6 +10,10 @@ module.exports = {
       '/admin': {
         target,
         changeOrigin: true
+      },
+      '/api': {
+        target,
+        changeOrigin: true
       }
     }
   }

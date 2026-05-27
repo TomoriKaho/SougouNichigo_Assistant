@@ -1,8 +1,9 @@
 const jwt = require('jsonwebtoken')
 const { User } = require('../models/User')
+const { getEnv, requireEnv } = require('../config/env')
 
-const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'change-admin-secret'
-const ADMIN_JWT_EXPIRES_IN = process.env.ADMIN_JWT_EXPIRES_IN || '1d'
+const ADMIN_JWT_SECRET = requireEnv('ADMIN_JWT_SECRET')
+const ADMIN_JWT_EXPIRES_IN = getEnv('ADMIN_JWT_EXPIRES_IN', '1d')
 
 function toAdminPayload(user) {
   return {

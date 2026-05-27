@@ -18,13 +18,13 @@ const routes = [
   {
     path: '/',
     component: AppLayout,
-    meta: { requiresAuth: true, requiresPrivileged: true },
+    meta: { requiresAuth: true },
     children: [
       { path: '', name: 'Dashboard', component: Dashboard },
-      { path: 'users', name: 'Users', component: Users },
-      { path: 'vocabulary', name: 'Vocabulary', component: Vocabulary },
-      { path: 'feedback', name: 'Feedback', component: Feedback },
-      { path: 'database', name: 'DatabaseManagement', component: DatabaseManagement, meta: { requiresDev: true } }
+      { path: 'users', name: 'Users', component: Users, meta: { requiresPrivileged: true } },
+      { path: 'vocabulary', name: 'Vocabulary', component: Vocabulary, meta: { requiresPrivileged: true } },
+      { path: 'feedback', name: 'Feedback', component: Feedback, meta: { requiresPrivileged: true } },
+      { path: 'database', name: 'DatabaseManagement', component: DatabaseManagement, meta: { requiresPrivileged: true, requiresDev: true } }
     ]
   }
 ];
@@ -40,7 +40,7 @@ router.beforeEach(async (to, from, next) => {
   if (!state.user && state.token) await fetchMe();
 
   if (to.meta.public) {
-    if (isAuthenticated.value && isPrivileged.value) next({ name: 'Dashboard' });
+    if (isAuthenticated.value) next({ name: 'Dashboard' });
     else next();
     return;
   }
@@ -51,7 +51,7 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (to.meta.requiresPrivileged && !isPrivileged.value) {
-    next({ name: 'Login', query: { error: 'forbidden' } });
+    next({ name: 'Dashboard' });
     return;
   }
 

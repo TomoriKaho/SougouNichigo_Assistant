@@ -1,20 +1,14 @@
 const express = require('express')
 const cors = require('cors')
-const path = require('path')
-const fs = require('fs')
 
-const envPath = path.join(__dirname, '.env')
-if (fs.existsSync(envPath)) {
-  require('dotenv').config({ path: envPath })
-} else {
-  require('dotenv').config()
-}
+const { getEnv, loadEnv } = require('./config/env')
+loadEnv()
 
 const { initDatabase } = require('./database/db')
 const { bootstrapAdmin } = require('./admin/bootstrap')
 
 const app = express()
-const PORT = process.env.PORT || 3000
+const PORT = getEnv('PORT', '3000')
 
 app.use(cors())
 app.use(express.json({ limit: '10mb' }))

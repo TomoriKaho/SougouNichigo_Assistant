@@ -1,9 +1,16 @@
 const { User } = require('../models/User')
+const { getEnv, requireEnv } = require('../config/env')
 
 function ensureInitialAccount({ username, password, email, role, userType, isInitialAdmin, isInitialDev }) {
-  const existing = User.findRawByUsername(username)
+  const existing =
+    User.findRawByUsername(username) ||
+    (isInitialDev ? User.findRawInitialDev() : null) ||
+    (isInitialAdmin ? User.findRawInitialAdmin() : null)
+
   if (existing) {
     User.update(existing.id, {
+      username,
+      password,
       email,
       role,
       user_type: userType,
@@ -25,30 +32,33 @@ function ensureInitialAccount({ username, password, email, role, userType, isIni
 }
 
 function bootstrapAdmin() {
-  const devUsername = process.env.INITIAL_DEV_USERNAME || 'dev'
-  const devPassword = process.env.INITIAL_DEV_PASSWORD || 'SounichiNaviDev2026!'
-  const adminUsername = process.env.INITIAL_ADMIN_USERNAME || 'admin'
-  const adminPassword = process.env.INITIAL_ADMIN_PASSWORD || 'SounichiNaviAdmin2026!'
+  const devUsername = getEnv('INITIAL_DEV_USERNAME', 'dev')
+  const devPassword = requireEnv('INITIAL_DEV_PASSWORD')
+  const adminUsername = getEnv('INITIAL_ADMIN_USERNAME', 'admin')
+  const adminPassword = requireEnv('INITIAL_ADMIN_PASSWORD')
 
-  ensureInitialAccount({
+  const devId = ensureInitialAccount({
     username: devUsername,
     password: devPassword,
-    email: process.env.INITIAL_DEV_EMAIL || null,
+    email: getEnv('INITIAL_DEV_EMAIL') || null,
     role: 'dev',
     userType: 'teacher',
     isInitialAdmin: false,
     isInitialDev: true
   })
 
-  ensureInitialAccount({
+  const adminId = ensureInitialAccount({
     username: adminUsername,
     password: adminPassword,
-    email: process.env.INITIAL_ADMIN_EMAIL || null,
+    email: getEnv('INITIAL_ADMIN_EMAIL') || null,
     role: 'admin',
     userType: 'teacher',
     isInitialAdmin: true,
     isInitialDev: false
   })
+
+  User.clearInitialDevExcept(devId)
+  User.clearInitialAdminExcept(adminId)
 
   console.log('   ✓ 初始 dev/admin 账号检查完成')
 }

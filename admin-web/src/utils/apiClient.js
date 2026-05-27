@@ -1,4 +1,6 @@
-const TOKEN_KEY = 'admin_token';
+export const AUTH_TOKEN_KEY = 'sounichinavi_token';
+export const AUTH_MODE_KEY = 'sounichinavi_auth_mode';
+const LEGACY_ADMIN_TOKEN_KEY = 'admin_token';
 
 function normalizeApiBase(base) {
   const fallback = '/admin';
@@ -50,7 +52,27 @@ function resolveApiUrl(path, params) {
 }
 
 function getToken() {
-  return localStorage.getItem(TOKEN_KEY) || '';
+  return localStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem(LEGACY_ADMIN_TOKEN_KEY) || '';
+}
+
+export function getAuthToken() {
+  return getToken();
+}
+
+export function getAuthMode() {
+  return localStorage.getItem(AUTH_MODE_KEY) || (localStorage.getItem(LEGACY_ADMIN_TOKEN_KEY) ? 'admin' : '');
+}
+
+export function setAuthSession(token, mode) {
+  localStorage.setItem(AUTH_TOKEN_KEY, token);
+  localStorage.setItem(AUTH_MODE_KEY, mode);
+  localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
+}
+
+export function clearAuthSession() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_MODE_KEY);
+  localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
 }
 
 export async function apiRequest(path, options = {}) {
@@ -88,7 +110,7 @@ export async function apiRequest(path, options = {}) {
 
     if (!response.ok) {
       if (response.status === 401) {
-        localStorage.removeItem(TOKEN_KEY);
+        clearAuthSession();
         window.dispatchEvent(new CustomEvent('auth:expired'));
       }
 
