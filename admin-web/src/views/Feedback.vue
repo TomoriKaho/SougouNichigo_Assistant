@@ -2,24 +2,15 @@
   <section class="card feedback-page management-page">
     <div class="management-header">
       <div>
-        <h2>反馈处理</h2>
+        <h2>反馈查看</h2>
       </div>
       <div class="toolbar management-toolbar">
         <div class="toolbar-left">
           <span class="muted feedback-total-inline">共 {{ total }} 条</span>
-          <input v-model.trim="keyword" placeholder="搜索用户/内容/ID" @keydown.enter.prevent="refresh" />
-          <select v-model="statusFilter">
-            <option value="all">全部状态</option>
-            <option value="open">open</option>
-            <option value="handled">handled</option>
-            <option value="closed">closed</option>
-          </select>
-          <select v-model.number="satisfactionFilter">
-            <option :value="0">全部满意度</option>
-            <option :value="1">1</option>
-            <option :value="2">2</option>
-            <option :value="3">3</option>
-            <option :value="4">4</option>
+          <input v-model.trim="keyword" placeholder="搜索内容/类型/ID" @keydown.enter.prevent="refresh" />
+          <select v-model="feedbackTypeFilter">
+            <option value="all">全部类型</option>
+            <option v-for="type in feedbackTypes" :key="type" :value="type">{{ type }}</option>
           </select>
           <button class="ghost" @click="refresh" :disabled="loading">刷新</button>
         </div>
@@ -60,11 +51,9 @@
             <tr>
               <th>ID</th>
               <th>用户ID</th>
-              <th>用户名</th>
-              <th>满意度</th>
-              <th>评论</th>
-              <th>状态</th>
-              <th>创建时间</th>
+              <th>反馈类型</th>
+              <th>反馈内容</th>
+              <th>反馈时间</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -72,12 +61,8 @@
             <tr v-for="item in feedbackList" :key="item.id">
               <td>{{ item.id }}</td>
               <td>{{ item.user_id }}</td>
-              <td>{{ item.username || '-' }}</td>
-              <td>{{ item.satisfaction }}</td>
-              <td>{{ (item.comment || '-').slice(0, 60) }}</td>
-              <td>
-                <span class="tag" :class="statusClass(item.status)">{{ item.status || '-' }}</span>
-              </td>
+              <td><span class="tag info">{{ item.feedback_type }}</span></td>
+              <td>{{ (item.content || '-').slice(0, 80) }}</td>
               <td>{{ formatDate(item.created_at) }}</td>
               <td>
                 <button class="ghost" @click="openDetail(item)">详情</button>
@@ -85,7 +70,7 @@
               </td>
             </tr>
             <tr v-if="!feedbackList.length">
-              <td colspan="8" class="empty">暂无数据</td>
+              <td colspan="6" class="empty">暂无数据</td>
             </tr>
           </tbody>
         </table>
@@ -98,47 +83,24 @@
           <h3>反馈详情</h3>
           <button class="ghost" @click="closeDrawer">关闭</button>
         </header>
-        <form @submit.prevent="submitDetail">
-          <div class="detail-grid">
-            <div class="detail-item">
-              <span class="detail-label">用户ID</span>
-              <span class="detail-value">{{ detail.user_id }}</span>
-            </div>
-            <div class="detail-item">
-              <span class="detail-label">用户名</span>
-              <span class="detail-value">{{ detail.username }}</span>
-            </div>
-            <div class="detail-item">
-              <span class="detail-label">满意度</span>
-              <span class="detail-value">{{ detail.satisfaction }}</span>
-            </div>
-            <div class="detail-item">
-              <span class="detail-label">创建时间</span>
-              <span class="detail-value">{{ formatDate(detail.created_at) }}</span>
-            </div>
-            <div class="detail-item detail-span">
-              <span class="detail-label">评论</span>
-              <span class="detail-value muted">{{ detail.comment || '-' }}</span>
-            </div>
-            <label class="detail-item">
-              <span class="detail-label">状态</span>
-              <select v-model="detail.status">
-                <option value="open">open</option>
-                <option value="handled">handled</option>
-                <option value="closed">closed</option>
-              </select>
-            </label>
-            <label class="detail-item detail-span">
-              <span class="detail-label">管理员备注</span>
-              <textarea v-model="detail.admin_note" rows="4"></textarea>
-            </label>
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span class="detail-label">用户ID</span>
+            <span class="detail-value">{{ detail.user_id }}</span>
           </div>
-
-          <div class="drawer-actions">
-            <button type="button" class="ghost" @click="closeDrawer">取消</button>
-            <button type="submit" :disabled="saving">保存</button>
+          <div class="detail-item">
+            <span class="detail-label">反馈类型</span>
+            <span class="detail-value">{{ detail.feedback_type }}</span>
           </div>
-        </form>
+          <div class="detail-item">
+            <span class="detail-label">反馈时间</span>
+            <span class="detail-value">{{ formatDate(detail.created_at) }}</span>
+          </div>
+          <div class="detail-item detail-span">
+            <span class="detail-label">反馈内容</span>
+            <span class="detail-value muted">{{ detail.content || '-' }}</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -169,29 +131,25 @@ import { useAuth } from '../composables/useAuth';
 const { logout } = useAuth();
 const router = useRouter();
 
+const feedbackTypes = ['内容错误', '页面交互', '新功能请求', '其他'];
 const feedbackList = ref([]);
 const total = ref(0);
 const page = ref(1);
 const pageSize = ref(20);
 const pageJump = ref(1);
 const keyword = ref('');
-const statusFilter = ref('all');
-const satisfactionFilter = ref(0);
+const feedbackTypeFilter = ref('all');
 const loading = ref(false);
 const error = ref('');
 const drawerOpen = ref(false);
-const saving = ref(false);
 const deleting = ref(false);
 const deleteDialog = ref(null);
 const toast = reactive({ visible: false, message: '', type: 'info' });
 const detail = reactive({
   id: null,
   user_id: '',
-  username: '',
-  satisfaction: '',
-  comment: '',
-  status: 'open',
-  admin_note: '',
+  feedback_type: '',
+  content: '',
   created_at: ''
 });
 
@@ -227,8 +185,7 @@ async function refresh() {
         limit: pageSize.value,
         offset: (page.value - 1) * pageSize.value,
         keyword: keyword.value,
-        status: statusFilter.value,
-        satisfaction: satisfactionFilter.value || ''
+        feedbackType: feedbackTypeFilter.value
       }
     });
     feedbackList.value = data.feedbackList || [];
@@ -254,24 +211,14 @@ function formatDate(value) {
   return value ? String(value).replace('T', ' ').slice(0, 19) : '-';
 }
 
-function statusClass(status) {
-  if (status === 'open') return 'warning';
-  if (status === 'handled') return 'success';
-  if (status === 'closed') return 'info';
-  return '';
-}
-
 async function openDetail(item) {
   try {
     const data = await apiRequest(`/feedback/${item.id}`);
     Object.assign(detail, {
       id: data.id,
       user_id: data.user_id,
-      username: data.username,
-      satisfaction: data.satisfaction,
-      comment: data.comment,
-      status: data.status || 'open',
-      admin_note: data.admin_note || '',
+      feedback_type: data.feedback_type,
+      content: data.content,
       created_at: data.created_at
     });
     drawerOpen.value = true;
@@ -282,27 +229,6 @@ async function openDetail(item) {
 
 function closeDrawer() {
   drawerOpen.value = false;
-}
-
-async function submitDetail() {
-  if (!detail.id) return;
-  saving.value = true;
-  try {
-    await apiRequest(`/feedback/${detail.id}`, {
-      method: 'PATCH',
-      body: {
-        status: detail.status,
-        admin_note: detail.admin_note || null
-      }
-    });
-    showToast('反馈已更新', 'success');
-    closeDrawer();
-    await refresh();
-  } catch (err) {
-    handleApiError(err);
-  } finally {
-    saving.value = false;
-  }
 }
 
 function confirmDelete(item) {
@@ -328,7 +254,7 @@ async function submitDelete() {
   }
 }
 
-watch([keyword, statusFilter, satisfactionFilter], () => {
+watch([keyword, feedbackTypeFilter], () => {
   page.value = 1;
   refresh();
 });

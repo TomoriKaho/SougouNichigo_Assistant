@@ -73,8 +73,8 @@ const statCards = computed(() => [
   },
   {
     key: 'feedback',
-    label: '待处理反馈',
-    value: stats.value?.feedback?.open ?? '-',
+    label: '用户反馈',
+    value: stats.value?.feedback?.total ?? '-',
     routeName: 'Feedback'
   }
 ]);

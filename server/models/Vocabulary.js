@@ -90,8 +90,8 @@ class Vocabulary {
 
     const keyword = String(filters.keyword || '').trim().toLowerCase()
     if (keyword) {
-      clauses.push("(lower(v.term) LIKE ? OR lower(COALESCE(v.supplement, '')) LIKE ? OR CAST(v.id AS TEXT) LIKE ?)")
-      params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`)
+      clauses.push("(lower(v.term) LIKE ? OR lower(COALESCE(v.supplement, '')) LIKE ? OR lower(COALESCE(v.explanation, '')) LIKE ? OR CAST(v.id AS TEXT) LIKE ?)")
+      params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`)
     }
 
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''

@@ -138,22 +138,60 @@ function initVocabularyDatabase() {
 }
 
 function initFeedbackDatabase() {
-  feedbackDb.exec(`
-    CREATE TABLE IF NOT EXISTS feedback (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      username TEXT NOT NULL,
-      satisfaction INTEGER NOT NULL CHECK(satisfaction >= 1 AND satisfaction <= 4),
-      comment TEXT,
-      status TEXT DEFAULT 'open',
-      admin_note TEXT,
-      created_at TEXT DEFAULT (datetime('now', 'localtime')),
-      updated_at TEXT DEFAULT (datetime('now', 'localtime'))
-    )
-  `)
+  function createFeedbackTable() {
+    feedbackDb.exec(`
+      CREATE TABLE IF NOT EXISTS feedback (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        feedback_type TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now', 'localtime'))
+      )
+    `)
+  }
+
+  const tableExists = feedbackDb
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'feedback'")
+    .get()
+
+  if (!tableExists) {
+    createFeedbackTable()
+  } else {
+    const columns = feedbackDb.prepare('PRAGMA table_info(feedback)').all().map((item) => item.name)
+    const legacyColumns = ['username', 'satisfaction', 'comment', 'status', 'admin_note', 'updated_at']
+    const needsMigration =
+      !columns.includes('feedback_type') ||
+      !columns.includes('content') ||
+      legacyColumns.some((column) => columns.includes(column))
+
+    if (needsMigration) {
+      const contentExpression = columns.includes('comment')
+        ? "COALESCE(NULLIF(TRIM(comment), ''), '旧反馈未填写内容')"
+        : columns.includes('content')
+          ? "COALESCE(NULLIF(TRIM(content), ''), '旧反馈未填写内容')"
+          : "'旧反馈未填写内容'"
+      const typeExpression = columns.includes('feedback_type')
+        ? "COALESCE(NULLIF(TRIM(feedback_type), ''), '其他')"
+        : "'其他'"
+      const createdExpression = columns.includes('created_at')
+        ? "COALESCE(created_at, datetime('now', 'localtime'))"
+        : "datetime('now', 'localtime')"
+      const userExpression = columns.includes('user_id') ? 'COALESCE(user_id, 0)' : '0'
+
+      feedbackDb.exec('DROP TABLE IF EXISTS feedback_legacy')
+      feedbackDb.exec('ALTER TABLE feedback RENAME TO feedback_legacy')
+      createFeedbackTable()
+      feedbackDb.exec(`
+        INSERT INTO feedback (id, user_id, feedback_type, content, created_at)
+        SELECT id, ${userExpression}, ${typeExpression}, ${contentExpression}, ${createdExpression}
+        FROM feedback_legacy
+      `)
+      feedbackDb.exec('DROP TABLE feedback_legacy')
+    }
+  }
 
   feedbackDb.exec('CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id)')
-  feedbackDb.exec('CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status)')
+  feedbackDb.exec('CREATE INDEX IF NOT EXISTS idx_feedback_type ON feedback(feedback_type)')
   feedbackDb.exec('CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at)')
 }
 

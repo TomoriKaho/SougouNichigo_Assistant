@@ -8,7 +8,7 @@ const { requireAdmin, signAdminToken, ADMIN_JWT_EXPIRES_IN } = require('../middl
 const { dataDir, dbPaths } = require('../database/db')
 const { User, ALLOWED_ROLES, ALLOWED_USER_TYPES } = require('../models/User')
 const { Vocabulary } = require('../models/Vocabulary')
-const Feedback = require('../models/Feedback')
+const { Feedback, FEEDBACK_TYPES } = require('../models/Feedback')
 
 const BACKUP_DIR = path.join(dataDir, 'backups')
 const BACKUP_RECORDS_FILE = path.join(dataDir, 'backup_records.json')
@@ -336,26 +336,15 @@ router.get('/feedback', requireAdmin, (req, res) => {
     limit: parseLimit(req.query.limit),
     offset: parseOffset(req.query.offset),
     keyword: req.query.keyword || '',
-    status: req.query.status || 'all',
-    satisfaction: Number(req.query.satisfaction || 0)
+    feedbackType: req.query.feedbackType || req.query.feedback_type || 'all'
   })
-  res.json({ feedbackList: result.rows, total: result.total })
+  res.json({ feedbackList: result.rows, total: result.total, feedbackTypes: FEEDBACK_TYPES })
 })
 
 router.get('/feedback/:id', requireAdmin, (req, res) => {
   const item = Feedback.findById(req.params.id)
   if (!item) return res.status(404).json({ error: '反馈不存在' })
   res.json(item)
-})
-
-router.patch('/feedback/:id', requireAdmin, (req, res) => {
-  const item = Feedback.findById(req.params.id)
-  if (!item) return res.status(404).json({ error: '反馈不存在' })
-
-  const allowedStatuses = ['open', 'handled', 'closed']
-  const status = allowedStatuses.includes(req.body.status) ? req.body.status : item.status
-  Feedback.updateStatus(req.params.id, status, req.body.admin_note ?? item.admin_note)
-  res.json({ success: true })
 })
 
 router.delete('/feedback/:id', requireAdmin, (req, res) => {

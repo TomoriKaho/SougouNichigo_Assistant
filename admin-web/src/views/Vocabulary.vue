@@ -2,31 +2,31 @@
   <section class="card lexicon-page">
     <div class="header-row">
       <div class="header-copy">
-        <h2>词库条目管理</h2>
+        <h2>词库管理</h2>
       </div>
       <div class="toolbar">
         <div class="toolbar-left lexicon-filter-bar">
           <select v-model.number="filters.textbookId">
             <option v-for="textbook in textbooks" :key="textbook.id" :value="textbook.id">{{ textbook.name }}</option>
           </select>
-          <select v-model.number="filters.lessonId">
+          <select v-model.number="filters.lessonId" class="lesson-filter-select">
             <option :value="0">全部课</option>
             <option v-for="lesson in lessonOptions" :key="lesson.id" :value="lesson.id">
-              第{{ lesson.lesson_number }}课 {{ lesson.title }}
+              第{{ lesson.lesson_number }}课
             </option>
           </select>
-          <select v-model.number="filters.unitId">
+          <select v-model.number="filters.unitId" :disabled="lessonFilterAll">
             <option :value="0">全部单元</option>
             <option v-for="unit in unitOptions" :key="unit.id" :value="unit.id">
               {{ unit.name }}
             </option>
           </select>
-          <select v-model="filters.tableType">
+          <select v-model="filters.tableType" :disabled="lessonFilterAll">
             <option value="all">全部词表</option>
             <option value="new">新出単語</option>
             <option value="practice">練習用単語</option>
           </select>
-          <input v-model.trim="keyword" placeholder="搜索词条/词条补充/ID" @keydown.enter.prevent="refresh" />
+          <input v-model.trim="keyword" placeholder="搜索词条/中文翻译" @keydown.enter.prevent="refresh" />
           <button class="ghost" @click="toggleIdOrder" :disabled="loading">
             {{ idOrder === 'asc' ? '倒序查看' : '顺序查看' }}
           </button>
@@ -35,24 +35,23 @@
         <div class="toolbar-right">
           <div class="pagination inline-pagination">
             <span class="muted pagination-total">共 {{ total }} 条</span>
-            <template v-if="total > pageSize">
-              <button class="ghost" :disabled="page === 1 || loading" @click="changePage(page - 1)">上一页</button>
-              <label class="pagination-jump" for="vocabulary-page-jump">
-                第
-                <input
-                  id="vocabulary-page-jump"
-                  v-model.number="pageJump"
-                  class="page-jump-input page-number-input"
-                  type="number"
-                  min="1"
-                  :max="totalPages"
-                  @keydown.enter.prevent="jumpToPage"
-                  @blur="jumpToPage"
-                />
-                / {{ totalPages }} 页
-              </label>
-              <button class="ghost" :disabled="page === totalPages || loading" @click="changePage(page + 1)">下一页</button>
-            </template>
+            <button class="ghost" :disabled="page === 1 || loading" @click="changePage(page - 1)">上一页</button>
+            <label class="pagination-jump" for="vocabulary-page-jump">
+              第
+              <input
+                id="vocabulary-page-jump"
+                v-model.number="pageJump"
+                class="page-jump-input page-number-input"
+                type="number"
+                min="1"
+                :max="totalPages"
+                :disabled="totalPages <= 1 || loading"
+                @keydown.enter.prevent="jumpToPage"
+                @blur="jumpToPage"
+              />
+              / {{ totalPages }} 页
+            </label>
+            <button class="ghost" :disabled="page === totalPages || loading" @click="changePage(page + 1)">下一页</button>
           </div>
           <button v-if="isDev" @click="openCreate">新建条目</button>
         </div>
@@ -67,31 +66,20 @@
       <div v-else-if="loading" class="loading">加载中...</div>
       <div v-else class="table-scroll">
         <div v-if="rows.length" class="lexicon-entry-grid">
-          <article v-for="item in rows" :key="item.id" class="lexicon-entry-card">
-            <div class="lexicon-entry-main">
-              <div class="lexicon-entry-meta">
-                <div class="lexicon-entry-title">
-                  <span class="lexicon-entry-id">ID {{ item.id }}</span>
-                  <span class="lexicon-entry-verb">{{ item.term }}</span>
-                </div>
-                <div class="lexicon-entry-actions">
-                  <button class="ghost" @click="openEdit(item)">编辑</button>
-                  <button v-if="isDev" class="danger" @click="confirmDelete(item)">删除</button>
-                </div>
+          <article v-for="item in rows" :key="item.id" class="lexicon-entry-card" :data-entry-id="item.id">
+            <div class="lexicon-entry-main" :class="{ 'is-scrollable': scrollableEntryIds.has(item.id) }">
+              <div class="lexicon-card-header">
+                <h3 class="lexicon-entry-term" :title="item.term">
+                  <span>{{ item.term }}</span>
+                  <span v-if="item.accent" class="lexicon-entry-accent">{{ item.accent }}</span>
+                </h3>
+                <span v-if="partOfSpeechMeta(item)" class="lexicon-entry-grammar">{{ partOfSpeechMeta(item) }}</span>
               </div>
-              <p class="lexicon-entry-meaning">{{ item.explanation || '-' }}</p>
-              <div class="lexicon-entry-tags">
-                <div class="lexicon-entry-tag-row">
-                  <span class="lexicon-entry-tag tag-tr">{{ item.textbook_name }}</span>
-                  <span class="lexicon-entry-tag tag-irreg">第{{ item.lesson_number }}课</span>
-                  <span class="lexicon-entry-tag tag-prnl">{{ item.unit_name }}</span>
-                  <span class="lexicon-entry-tag tag-intr">{{ item.table_type_label }}</span>
-                </div>
-                <div class="lexicon-entry-tag-row">
-                  <span v-if="item.supplement" class="lexicon-entry-tag tag-vdo">{{ item.supplement }}</span>
-                  <span v-if="item.accent" class="lexicon-entry-tag tag-vio">声调 {{ item.accent }}</span>
-                  <span v-if="item.part_of_speech" class="lexicon-entry-tag tag-viodo">{{ item.part_of_speech }}</span>
-                </div>
+              <p v-if="item.supplement" class="lexicon-entry-supplement">({{ item.supplement }})</p>
+              <p class="lexicon-entry-translation">{{ item.explanation || '-' }}</p>
+              <div class="lexicon-entry-actions">
+                <button class="ghost" @click="openEdit(item)">编辑</button>
+                <button v-if="isDev" class="danger" @click="confirmDelete(item)">删除</button>
               </div>
             </div>
           </article>
@@ -215,7 +203,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { apiRequest, ApiError } from '../utils/apiClient';
 import { useAuth } from '../composables/useAuth';
@@ -239,6 +227,7 @@ const activeEntry = ref(null);
 const saving = ref(false);
 const deleting = ref(false);
 const deleteDialog = ref(null);
+const scrollableEntryIds = ref(new Set());
 const toast = reactive({ visible: false, message: '', type: 'info' });
 
 const filters = reactive({
@@ -269,6 +258,7 @@ const selectedTextbook = computed(() => textbooks.value.find((item) => Number(it
 const lessonOptions = computed(() => selectedTextbook.value?.lessons || []);
 const selectedLesson = computed(() => lessonOptions.value.find((item) => Number(item.id) === Number(filters.lessonId)) || null);
 const unitOptions = computed(() => (filters.lessonId ? selectedLesson.value?.units || [] : lessonOptions.value.flatMap((lesson) => lesson.units || [])));
+const lessonFilterAll = computed(() => Number(filters.lessonId) === 0);
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
 const createTextbook = computed(() => textbooks.value.find((item) => Number(item.id) === Number(createContext.textbook_id)) || null);
@@ -334,14 +324,15 @@ async function refresh() {
         q: keyword.value,
         textbookId: filters.textbookId || '',
         lessonId: filters.lessonId || '',
-        unitId: filters.unitId || '',
-        tableType: filters.tableType,
+        unitId: lessonFilterAll.value ? '' : filters.unitId || '',
+        tableType: lessonFilterAll.value ? 'all' : filters.tableType,
         id_order: idOrder.value
       }
     });
     rows.value = data.rows || [];
     total.value = data.total || 0;
     pageJump.value = page.value;
+    measureCardScrollbars();
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '加载失败';
   } finally {
@@ -418,6 +409,25 @@ function payloadFromForm() {
   };
 }
 
+function partOfSpeechMeta(item) {
+  const partOfSpeech = String(item?.part_of_speech || '').trim();
+  if (partOfSpeech) return `<${partOfSpeech}>`;
+  return '';
+}
+
+async function measureCardScrollbars() {
+  await nextTick();
+  const nextScrollableIds = new Set();
+  document.querySelectorAll('.lexicon-entry-card').forEach((card) => {
+    const entryId = Number(card.getAttribute('data-entry-id'));
+    const body = card.querySelector('.lexicon-entry-main');
+    if (entryId && body && body.scrollHeight > body.clientHeight + 1) {
+      nextScrollableIds.add(entryId);
+    }
+  });
+  scrollableEntryIds.value = nextScrollableIds;
+}
+
 async function submitSave() {
   if (!validateForm()) return;
   saving.value = true;
@@ -483,6 +493,9 @@ watch(() => filters.textbookId, () => {
 
 watch(() => filters.lessonId, () => {
   filters.unitId = 0;
+  if (lessonFilterAll.value) {
+    filters.tableType = 'all';
+  }
   page.value = 1;
   refresh();
 });
@@ -503,11 +516,16 @@ watch(() => createContext.lesson_id, () => {
 });
 
 onMounted(async () => {
+  window.addEventListener('resize', measureCardScrollbars);
   try {
     await loadOptions();
     await refresh();
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '加载失败';
   }
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', measureCardScrollbars);
 });
 </script>

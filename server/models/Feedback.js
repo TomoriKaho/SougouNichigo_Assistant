@@ -1,18 +1,31 @@
 const { feedbackDb } = require('../database/db')
 
+const FEEDBACK_TYPES = ['内容错误', '页面交互', '新功能请求', '其他']
+
+function normalizeFeedbackType(value) {
+  const feedbackType = String(value || '').trim()
+  return FEEDBACK_TYPES.includes(feedbackType) ? feedbackType : ''
+}
+
 class Feedback {
-  static create({ userId, username, satisfaction, comment }) {
+  static create({ userId, feedbackType, content }) {
+    const normalizedType = normalizeFeedbackType(feedbackType)
+    const normalizedContent = String(content || '').trim()
+
+    if (!normalizedType) throw new Error('反馈类型无效')
+    if (!normalizedContent) throw new Error('反馈内容不能为空')
+
     const result = feedbackDb.prepare(`
-      INSERT INTO feedback (user_id, username, satisfaction, comment, created_at, updated_at)
-      VALUES (?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
-    `).run(userId, username, satisfaction, comment || null)
+      INSERT INTO feedback (user_id, feedback_type, content, created_at)
+      VALUES (?, ?, ?, datetime('now', 'localtime'))
+    `).run(userId, normalizedType, normalizedContent)
 
     return result.lastInsertRowid
   }
 
   static findByUserId(userId, limit = 50) {
     return feedbackDb.prepare(`
-      SELECT *
+      SELECT id, user_id, feedback_type, content, created_at
       FROM feedback
       WHERE user_id = ?
       ORDER BY datetime(created_at) DESC, id DESC
@@ -20,29 +33,25 @@ class Feedback {
     `).all(userId, limit)
   }
 
-  static list({ limit = 50, offset = 0, keyword = '', status = 'all', satisfaction = 0 } = {}) {
+  static list({ limit = 50, offset = 0, keyword = '', feedbackType = 'all' } = {}) {
     const clauses = []
     const params = []
+    const normalizedType = normalizeFeedbackType(feedbackType)
 
-    if (status && status !== 'all') {
-      clauses.push('status = ?')
-      params.push(status)
-    }
-
-    if (Number(satisfaction) > 0) {
-      clauses.push('satisfaction = ?')
-      params.push(Number(satisfaction))
+    if (normalizedType) {
+      clauses.push('feedback_type = ?')
+      params.push(normalizedType)
     }
 
     const term = String(keyword || '').trim().toLowerCase()
     if (term) {
-      clauses.push("(CAST(id AS TEXT) LIKE ? OR CAST(user_id AS TEXT) LIKE ? OR lower(username) LIKE ? OR lower(COALESCE(comment, '')) LIKE ?)")
+      clauses.push("(CAST(id AS TEXT) LIKE ? OR CAST(user_id AS TEXT) LIKE ? OR lower(feedback_type) LIKE ? OR lower(content) LIKE ?)")
       params.push(`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`)
     }
 
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
     const rows = feedbackDb.prepare(`
-      SELECT *
+      SELECT id, user_id, feedback_type, content, created_at
       FROM feedback
       ${where}
       ORDER BY datetime(created_at) DESC, id DESC
@@ -54,15 +63,11 @@ class Feedback {
   }
 
   static findById(id) {
-    return feedbackDb.prepare('SELECT * FROM feedback WHERE id = ?').get(id)
-  }
-
-  static updateStatus(id, status, adminNote = null) {
     return feedbackDb.prepare(`
-      UPDATE feedback
-      SET status = ?, admin_note = ?, updated_at = datetime('now', 'localtime')
+      SELECT id, user_id, feedback_type, content, created_at
+      FROM feedback
       WHERE id = ?
-    `).run(status, adminNote, id)
+    `).get(id)
   }
 
   static delete(id) {
@@ -70,15 +75,14 @@ class Feedback {
   }
 
   static statistics() {
-    const total = feedbackDb.prepare('SELECT COUNT(*) AS total FROM feedback').get().total
-    const average = feedbackDb.prepare('SELECT AVG(satisfaction) AS average FROM feedback').get().average || 0
-    const open = feedbackDb.prepare("SELECT COUNT(*) AS total FROM feedback WHERE status = 'open'").get().total
     return {
-      total,
-      open,
-      average: Number(average.toFixed ? average.toFixed(2) : average)
+      total: feedbackDb.prepare('SELECT COUNT(*) AS total FROM feedback').get().total
     }
   }
 }
 
-module.exports = Feedback
+module.exports = {
+  Feedback,
+  FEEDBACK_TYPES,
+  normalizeFeedbackType
+}
