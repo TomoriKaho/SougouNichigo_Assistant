@@ -6,6 +6,12 @@
       </div>
       <nav>
         <RouterLink to="/" end>仪表盘</RouterLink>
+        <RouterLink v-if="isUserMode" to="/course-study">课程学习</RouterLink>
+        <RouterLink v-if="isUserMode" to="/word-study">单词学习</RouterLink>
+        <RouterLink v-if="isUserMode" to="/grammar-study">文法学习</RouterLink>
+        <RouterLink v-if="isUserMode" to="/text-study">课文学习</RouterLink>
+        <RouterLink v-if="isUserMode" to="/translation-practice">翻译练习</RouterLink>
+        <RouterLink v-if="isUserMode" to="/reading-materials">阅读材料</RouterLink>
         <RouterLink v-if="isPrivileged" to="/users">用户管理</RouterLink>
         <RouterLink v-if="isPrivileged" to="/vocabulary">词库管理</RouterLink>
         <RouterLink v-if="isPrivileged" to="/feedback">反馈处理</RouterLink>
@@ -69,7 +75,7 @@ import { apiRequest, ApiError } from '../utils/apiClient';
 
 const route = useRoute();
 const router = useRouter();
-const { state, logout, isDev, isPrivileged } = useAuth();
+const { state, logout, isDev, isPrivileged, isUserMode } = useAuth();
 const feedbackOpen = ref(false);
 const feedbackSaving = ref(false);
 const feedbackError = ref('');
@@ -85,7 +91,13 @@ const titles = {
   Users: '用户管理',
   Vocabulary: '词库管理',
   Feedback: '反馈处理',
-  DatabaseManagement: '数据库管理'
+  DatabaseManagement: '数据库管理',
+  CourseStudy: '课程学习',
+  WordStudy: '单词学习',
+  GrammarStudy: '文法学习',
+  TextStudy: '课文学习',
+  TranslationPractice: '翻译练习',
+  ReadingMaterials: '阅读材料'
 };
 
 const user = computed(() => state.user);

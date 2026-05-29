@@ -7,6 +7,7 @@ import Vocabulary from '../views/Vocabulary.vue';
 import Feedback from '../views/Feedback.vue';
 import DatabaseManagement from '../views/DatabaseManagement.vue';
 import Login from '../views/Login.vue';
+import UserPlaceholder from '../views/UserPlaceholder.vue';
 
 const routes = [
   {
@@ -21,6 +22,12 @@ const routes = [
     meta: { requiresAuth: true },
     children: [
       { path: '', name: 'Dashboard', component: Dashboard },
+      { path: 'course-study', name: 'CourseStudy', component: UserPlaceholder, meta: { title: '课程学习', requiresUser: true } },
+      { path: 'word-study', name: 'WordStudy', component: UserPlaceholder, meta: { title: '单词学习', requiresUser: true } },
+      { path: 'grammar-study', name: 'GrammarStudy', component: UserPlaceholder, meta: { title: '文法学习', requiresUser: true } },
+      { path: 'text-study', name: 'TextStudy', component: UserPlaceholder, meta: { title: '课文学习', requiresUser: true } },
+      { path: 'translation-practice', name: 'TranslationPractice', component: UserPlaceholder, meta: { title: '翻译练习', requiresUser: true } },
+      { path: 'reading-materials', name: 'ReadingMaterials', component: UserPlaceholder, meta: { title: '阅读材料', requiresUser: true } },
       { path: 'users', name: 'Users', component: Users, meta: { requiresPrivileged: true } },
       { path: 'vocabulary', name: 'Vocabulary', component: Vocabulary, meta: { requiresPrivileged: true } },
       { path: 'feedback', name: 'Feedback', component: Feedback, meta: { requiresPrivileged: true } },
@@ -51,6 +58,11 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (to.meta.requiresPrivileged && !isPrivileged.value) {
+    next({ name: 'Dashboard' });
+    return;
+  }
+
+  if (to.meta.requiresUser && state.mode !== 'user') {
     next({ name: 'Dashboard' });
     return;
   }
