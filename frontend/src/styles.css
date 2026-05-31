@@ -331,6 +331,25 @@ button.ghost:hover {
   box-shadow: 0 12px 22px rgba(101, 0, 13, 0.14);
 }
 
+.table-action-link.ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--theme-red-dark);
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 6px 14px rgba(101, 0, 13, 0.08);
+}
+
+.table-action-link.ghost:hover {
+  box-shadow: 0 12px 22px rgba(101, 0, 13, 0.14);
+}
+
 .content {
   flex: 1;
   min-height: 0;
@@ -1257,8 +1276,9 @@ textarea:disabled {
 .lexicon-entry-actions {
   display: flex;
   align-self: flex-end;
-  margin-top: 2px;
+  margin-top: auto;
   margin-left: auto;
+  padding-top: 8px;
   justify-content: flex-end;
   align-items: center;
   gap: 6px;
@@ -1319,6 +1339,162 @@ textarea:disabled {
 
 .lexicon-edit-drawer {
   width: min(920px, 96vw);
+}
+
+.grammar-page .management-toolbar input {
+  min-width: 180px;
+}
+
+.grammar-table th:first-child,
+.grammar-table td:first-child {
+  width: auto;
+}
+
+.grammar-table th:nth-child(n + 2),
+.grammar-table td:nth-child(n + 2) {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.grammar-table th:nth-child(n + 2) {
+  text-align: left;
+}
+
+.grammar-table td:nth-child(n + 2) {
+  text-align: right;
+}
+
+.grammar-table td.actions {
+  display: table-cell;
+}
+
+.grammar-table td.actions > button + button {
+  margin-left: 8px;
+}
+
+.grammar-entry-text {
+  display: inline-block;
+  max-width: min(760px, 56vw);
+  color: var(--theme-red-dark);
+  font-weight: 800;
+  font-family: 'Yu Mincho', 'Hiragino Mincho ProN', 'Noto Serif JP', 'Songti SC', serif;
+  font-size: 17px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.grammar-context-grid {
+  margin-bottom: 4px;
+}
+
+.grammar-edit-drawer {
+  width: min(980px, 96vw);
+  max-height: 88vh;
+}
+
+.text-table th:first-child,
+.text-table td:first-child,
+.text-table th:nth-child(2),
+.text-table td:nth-child(2) {
+  width: 120px;
+  white-space: nowrap;
+}
+
+.text-table th:last-child,
+.text-table td:last-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.text-table td.actions {
+  display: table-cell;
+}
+
+.text-table td.actions > button + button {
+  margin-left: 8px;
+}
+
+.text-entry-title {
+  display: inline-block;
+  max-width: min(760px, 58vw);
+  color: var(--theme-red-dark);
+  font-weight: 800;
+  font-size: 16px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.text-context-grid {
+  margin-bottom: 4px;
+}
+
+.text-edit-drawer {
+  width: min(980px, 96vw);
+  max-height: 88vh;
+}
+
+.reading-materials-page .management-toolbar input {
+  min-width: 190px;
+}
+
+.reading-materials-table th:first-child,
+.reading-materials-table td:first-child {
+  min-width: 220px;
+}
+
+.reading-materials-table th:nth-child(3),
+.reading-materials-table td:nth-child(3),
+.reading-materials-table th:nth-child(4),
+.reading-materials-table td:nth-child(4),
+.reading-materials-table th:nth-child(5),
+.reading-materials-table td:nth-child(5),
+.reading-materials-table th:nth-child(6),
+.reading-materials-table td:nth-child(6),
+.reading-materials-table th:last-child,
+.reading-materials-table td:last-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.reading-materials-table td.actions {
+  display: table-cell;
+}
+
+.reading-materials-table td.actions > button + button,
+.reading-materials-table td.actions > button + .table-action-link,
+.reading-materials-table td.actions > .table-action-link + button {
+  margin-left: 8px;
+}
+
+.reading-material-title {
+  display: inline-block;
+  max-width: min(420px, 34vw);
+  color: var(--theme-red-dark);
+  font-weight: 800;
+  font-size: 16px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.selected-file-line {
+  margin: 0;
+}
+
+.reading-material-upload-modal {
+  width: min(560px, 96vw);
+}
+
+.user-reading-materials-table .reading-material-title {
+  max-width: min(620px, 46vw);
 }
 
 @media (max-width: 960px) {

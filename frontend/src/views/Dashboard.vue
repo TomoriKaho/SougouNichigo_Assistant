@@ -28,6 +28,22 @@
                   <path d="M5.5 4.5h10a2 2 0 0 1 2 2v12.8a.2.2 0 0 1-.32.15L13.2 16.5a2 2 0 0 0-2.4 0l-3.98 2.95a.2.2 0 0 1-.32-.15V6.5a2 2 0 0 1 2-2z" />
                   <path d="M9 8.5h6M9 11.5h6" />
                 </svg>
+                <svg v-else-if="item.key === 'grammar'" viewBox="0 0 24 24" fill="none">
+                  <path d="M5 5.5h14" />
+                  <path d="M7.5 5.5v13" />
+                  <path d="M16.5 5.5v13" />
+                  <path d="M5 18.5h14" />
+                  <path d="M9.5 11.5h5" />
+                </svg>
+                <svg v-else-if="item.key === 'text'" viewBox="0 0 24 24" fill="none">
+                  <path d="M6 4.8h9.5L18 7.3v11.9H6z" />
+                  <path d="M15.5 4.8v3h3" />
+                  <path d="M8.8 11h6.4M8.8 14h6.4M8.8 17h4.4" />
+                </svg>
+                <svg v-else-if="item.key === 'readingMaterials'" viewBox="0 0 24 24" fill="none">
+                  <path d="M5.5 5.5h13v13h-13z" />
+                  <path d="M8 8.5h8M8 11.5h8M8 14.5h5" />
+                </svg>
                 <svg v-else viewBox="0 0 24 24" fill="none">
                   <circle cx="12" cy="12" r="8.5" />
                   <path d="M8 12h8M12 8v8" />
@@ -56,7 +72,7 @@ const stats = ref(null);
 const welcomeText = computed(() => state.user?.username || state.user?.email || '管理员');
 const welcomeSubtext = computed(() => {
   if (!isPrivileged.value) return '您已登录総日ナビ。';
-  return '在这里，您可以管理综合日语词库、后台用户、用户反馈和数据库备份。';
+  return '在这里，您可以管理综合日语词库、文法、课文、阅读材料、后台用户和反馈。';
 });
 const statCards = computed(() => [
   {
@@ -70,6 +86,24 @@ const statCards = computed(() => [
     label: '词条',
     value: stats.value?.vocabulary?.total ?? '-',
     routeName: 'Vocabulary'
+  },
+  {
+    key: 'grammar',
+    label: '文法',
+    value: stats.value?.grammar?.total ?? '-',
+    routeName: 'Grammar'
+  },
+  {
+    key: 'text',
+    label: '课文',
+    value: stats.value?.text?.total ?? '-',
+    routeName: 'Texts'
+  },
+  {
+    key: 'readingMaterials',
+    label: '阅读材料',
+    value: stats.value?.readingMaterials?.total ?? '-',
+    routeName: 'ReadingMaterialsManagement'
   },
   {
     key: 'feedback',

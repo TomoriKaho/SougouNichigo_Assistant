@@ -1,7 +1,7 @@
 {
-  "name": "sounichinavi-server",
+  "name": "sounichinavi-backend",
   "version": "1.0.0",
-  "description": "SounichiNavi / 総日ナビ 后端服务",
+  "description": "SounichiNavi / 総日ナビ backend service",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"

@@ -2,6 +2,8 @@ const Database = require('better-sqlite3')
 const fs = require('fs')
 const path = require('path')
 const { seedVocabularyFromJson } = require('./seedVocabulary')
+const { seedGrammarFromJson } = require('./seedGrammar')
+const { seedTextFromJson } = require('./seedText')
 
 const dataDir = path.resolve(__dirname, '..', '..', 'data')
 fs.mkdirSync(dataDir, { recursive: true })
@@ -9,21 +11,33 @@ fs.mkdirSync(dataDir, { recursive: true })
 const dbPaths = {
   user: path.join(dataDir, 'user_data.db'),
   vocabulary: path.join(dataDir, 'vocabulary.db'),
+  grammar: path.join(dataDir, 'grammar.db'),
+  text: path.join(dataDir, 'text.db'),
+  readingMaterials: path.join(dataDir, 'reading_materials.db'),
   feedback: path.join(dataDir, 'feedback.db')
 }
 
 const dbExisted = {
   user: fs.existsSync(dbPaths.user),
   vocabulary: fs.existsSync(dbPaths.vocabulary),
+  grammar: fs.existsSync(dbPaths.grammar),
+  text: fs.existsSync(dbPaths.text),
+  readingMaterials: fs.existsSync(dbPaths.readingMaterials),
   feedback: fs.existsSync(dbPaths.feedback)
 }
 
 const userDb = new Database(dbPaths.user)
 const vocabularyDb = new Database(dbPaths.vocabulary)
+const grammarDb = new Database(dbPaths.grammar)
+const textDb = new Database(dbPaths.text)
+const readingMaterialsDb = new Database(dbPaths.readingMaterials)
 const feedbackDb = new Database(dbPaths.feedback)
 
 userDb.pragma('foreign_keys = ON')
 vocabularyDb.pragma('foreign_keys = ON')
+grammarDb.pragma('foreign_keys = ON')
+textDb.pragma('foreign_keys = ON')
+readingMaterialsDb.pragma('foreign_keys = ON')
 feedbackDb.pragma('foreign_keys = ON')
 
 function ensureColumn(db, table, column, definition) {
@@ -137,6 +151,146 @@ function initVocabularyDatabase() {
   }
 }
 
+function initGrammarDatabase() {
+  grammarDb.exec(`
+    CREATE TABLE IF NOT EXISTS textbooks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      description TEXT,
+      order_index INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    )
+  `)
+
+  grammarDb.exec(`
+    CREATE TABLE IF NOT EXISTS lessons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      textbook_id INTEGER NOT NULL,
+      lesson_number INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (textbook_id) REFERENCES textbooks(id) ON DELETE CASCADE,
+      UNIQUE(textbook_id, lesson_number)
+    )
+  `)
+
+  grammarDb.exec(`
+    CREATE TABLE IF NOT EXISTS units (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lesson_id INTEGER NOT NULL,
+      unit_number INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (lesson_id) REFERENCES lessons(id) ON DELETE CASCADE,
+      UNIQUE(lesson_id, unit_number)
+    )
+  `)
+
+  grammarDb.exec(`
+    CREATE TABLE IF NOT EXISTS grammar_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      textbook_id INTEGER NOT NULL,
+      lesson_id INTEGER NOT NULL,
+      unit_id INTEGER NOT NULL,
+      grammar TEXT NOT NULL,
+      brief_logic TEXT,
+      meaning TEXT,
+      translation TEXT,
+      formation TEXT,
+      notes TEXT,
+      examples_json TEXT DEFAULT '[]',
+      order_index INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (textbook_id) REFERENCES textbooks(id) ON DELETE CASCADE,
+      FOREIGN KEY (lesson_id) REFERENCES lessons(id) ON DELETE CASCADE,
+      FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE
+    )
+  `)
+
+  grammarDb.exec('CREATE INDEX IF NOT EXISTS idx_grammar_context ON grammar_entries(textbook_id, lesson_id, unit_id)')
+  grammarDb.exec('CREATE INDEX IF NOT EXISTS idx_grammar_text ON grammar_entries(grammar)')
+  grammarDb.exec('CREATE INDEX IF NOT EXISTS idx_grammar_lessons_textbook ON lessons(textbook_id)')
+  grammarDb.exec('CREATE INDEX IF NOT EXISTS idx_grammar_units_lesson ON units(lesson_id)')
+
+  const total = grammarDb.prepare('SELECT COUNT(*) AS total FROM grammar_entries').get().total
+  if (!dbExisted.grammar || total === 0) {
+    seedGrammarFromJson(grammarDb)
+  }
+}
+
+function initTextDatabase() {
+  textDb.exec(`
+    CREATE TABLE IF NOT EXISTS textbooks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      description TEXT,
+      order_index INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    )
+  `)
+
+  textDb.exec(`
+    CREATE TABLE IF NOT EXISTS text_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      textbook_id INTEGER NOT NULL,
+      lesson_number INTEGER NOT NULL,
+      unit_number INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT,
+      order_index INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (textbook_id) REFERENCES textbooks(id) ON DELETE CASCADE
+    )
+  `)
+
+  textDb.exec('CREATE INDEX IF NOT EXISTS idx_text_entries_textbook ON text_entries(textbook_id)')
+  textDb.exec('CREATE INDEX IF NOT EXISTS idx_text_entries_lesson_unit ON text_entries(lesson_number, unit_number)')
+
+  const total = textDb.prepare('SELECT COUNT(*) AS total FROM text_entries').get().total
+  if (!dbExisted.text || total === 0) {
+    seedTextFromJson(textDb)
+  }
+}
+
+function initReadingMaterialsDatabase() {
+  readingMaterialsDb.exec(`
+    CREATE TABLE IF NOT EXISTS reading_materials (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      original_filename TEXT NOT NULL,
+      stored_filename TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      mime_type TEXT,
+      file_category TEXT DEFAULT 'html',
+      preview_file_path TEXT,
+      conversion_status TEXT,
+      conversion_error TEXT,
+      converted_at TEXT,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      content_hash TEXT NOT NULL,
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    )
+  `)
+
+  ensureColumn(readingMaterialsDb, 'reading_materials', 'mime_type', 'mime_type TEXT')
+  ensureColumn(readingMaterialsDb, 'reading_materials', 'file_category', "file_category TEXT DEFAULT 'html'")
+  ensureColumn(readingMaterialsDb, 'reading_materials', 'preview_file_path', 'preview_file_path TEXT')
+  ensureColumn(readingMaterialsDb, 'reading_materials', 'conversion_status', 'conversion_status TEXT')
+  ensureColumn(readingMaterialsDb, 'reading_materials', 'conversion_error', 'conversion_error TEXT')
+  ensureColumn(readingMaterialsDb, 'reading_materials', 'converted_at', 'converted_at TEXT')
+  readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_reading_materials_created ON reading_materials(created_at)')
+  readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_reading_materials_hash ON reading_materials(content_hash)')
+  readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_reading_materials_category ON reading_materials(file_category)')
+}
+
 function initFeedbackDatabase() {
   function createFeedbackTable() {
     feedbackDb.exec(`
@@ -203,6 +357,15 @@ function initDatabase() {
   console.log(`   • 词库数据库: ${dbPaths.vocabulary}`)
   initVocabularyDatabase()
 
+  console.log(`   • 文法数据库: ${dbPaths.grammar}`)
+  initGrammarDatabase()
+
+  console.log(`   • 课文数据库: ${dbPaths.text}`)
+  initTextDatabase()
+
+  console.log(`   • 阅读材料数据库: ${dbPaths.readingMaterials}`)
+  initReadingMaterialsDatabase()
+
   console.log(`   • 反馈数据库: ${dbPaths.feedback}`)
   initFeedbackDatabase()
   console.log('   ✓ 数据库初始化完成')
@@ -213,6 +376,9 @@ module.exports = {
   dbPaths,
   userDb,
   vocabularyDb,
+  grammarDb,
+  textDb,
+  readingMaterialsDb,
   feedbackDb,
   initDatabase
 }

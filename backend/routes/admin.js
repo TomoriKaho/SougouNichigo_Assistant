@@ -8,6 +8,9 @@ const { requireAdmin, signAdminToken, ADMIN_JWT_EXPIRES_IN } = require('../middl
 const { dataDir, dbPaths } = require('../database/db')
 const { User, ALLOWED_ROLES, ALLOWED_USER_TYPES } = require('../models/User')
 const { Vocabulary } = require('../models/Vocabulary')
+const { Grammar } = require('../models/Grammar')
+const { Text } = require('../models/Text')
+const { ReadingMaterial } = require('../models/ReadingMaterial')
 const { Feedback, FEEDBACK_TYPES } = require('../models/Feedback')
 
 const BACKUP_DIR = path.join(dataDir, 'backups')
@@ -61,6 +64,24 @@ function getAllowedFiles() {
       label: 'vocabulary.db',
       fileName: 'vocabulary.db',
       path: dbPaths.vocabulary
+    },
+    {
+      key: 'grammar',
+      label: 'grammar.db',
+      fileName: 'grammar.db',
+      path: dbPaths.grammar
+    },
+    {
+      key: 'text',
+      label: 'text.db',
+      fileName: 'text.db',
+      path: dbPaths.text
+    },
+    {
+      key: 'reading_materials',
+      label: 'reading_materials.db',
+      fileName: 'reading_materials.db',
+      path: dbPaths.readingMaterials
     },
     {
       key: 'feedback',
@@ -122,6 +143,31 @@ function buildBackupZipBuffer(record) {
   return zip.toBuffer()
 }
 
+function decodeHeader(value) {
+  if (!value) return ''
+  try {
+    return decodeURIComponent(String(value))
+  } catch (error) {
+    return String(value)
+  }
+}
+
+function streamReadingMaterial(res, item, { view = false } = {}) {
+  if (view && !ReadingMaterial.canView(item)) {
+    return res.status(400).json({ error: '该文件暂不可在线查看，请下载后打开' })
+  }
+
+  const filePath = view ? ReadingMaterial.viewAbsolutePath(item) : ReadingMaterial.fileAbsolutePath(item)
+  if (!filePath || !fs.existsSync(filePath)) {
+    return res.status(404).json({ error: '文件不存在' })
+  }
+
+  const fileName = view ? ReadingMaterial.viewFilename(item) : ReadingMaterial.downloadFilename(item)
+  res.setHeader('Content-Type', view ? ReadingMaterial.viewContentType(item) : ReadingMaterial.contentType(item))
+  res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`)
+  return fs.createReadStream(filePath).pipe(res)
+}
+
 router.post('/auth/login', (req, res) => {
   const identifier = String(req.body.identifier || req.body.username || req.body.email || '').trim()
   const password = String(req.body.password || '')
@@ -162,6 +208,9 @@ router.get('/stats', requireAdmin, (req, res) => {
   res.json({
     users: User.counts(),
     vocabulary: Vocabulary.counts(),
+    grammar: Grammar.counts(),
+    text: Text.counts(),
+    readingMaterials: ReadingMaterial.counts(),
     feedback: Feedback.statistics()
   })
 })
@@ -277,8 +326,6 @@ router.get('/vocabulary', requireAdmin, (req, res) => {
 })
 
 router.post('/vocabulary', requireAdmin, (req, res) => {
-  if (!isDev(req)) return forbid(res, '仅 dev 可新增词条')
-
   const term = String(req.body.term || '').trim()
   if (!term) return res.status(400).json({ error: '词条不能为空' })
 
@@ -324,10 +371,226 @@ router.put('/vocabulary/:id', requireAdmin, (req, res) => {
 })
 
 router.delete('/vocabulary/:id', requireAdmin, (req, res) => {
-  if (!isDev(req)) return forbid(res, '仅 dev 可删除词条')
   const existing = Vocabulary.findById(req.params.id)
   if (!existing) return res.status(404).json({ error: '词条不存在' })
   Vocabulary.delete(req.params.id)
+  res.json({ success: true })
+})
+
+router.get('/grammar/options', requireAdmin, (req, res) => {
+  res.json(Grammar.options())
+})
+
+router.get('/grammar', requireAdmin, (req, res) => {
+  res.json(Grammar.list({
+    limit: parseLimit(req.query.limit, 50, 500),
+    offset: parseOffset(req.query.offset),
+    keyword: req.query.q || req.query.keyword || '',
+    textbookId: req.query.textbookId,
+    lessonId: req.query.lessonId,
+    unitId: req.query.unitId,
+    idOrder: req.query.id_order || req.query.idOrder || 'asc'
+  }))
+})
+
+router.post('/grammar', requireAdmin, (req, res) => {
+  const grammar = String(req.body.grammar || '').trim()
+  if (!grammar) return res.status(400).json({ error: '文法内容不能为空' })
+
+  const context = {
+    textbook_id: Number(req.body.textbook_id),
+    lesson_id: Number(req.body.lesson_id),
+    unit_id: Number(req.body.unit_id)
+  }
+
+  if (!Grammar.contextExists(context)) {
+    return res.status(400).json({ error: '教材、课或单元不存在' })
+  }
+
+  const id = Grammar.create({
+    ...req.body,
+    ...context,
+    grammar
+  })
+  res.status(201).json({ id })
+})
+
+router.get('/grammar/:id', requireAdmin, (req, res) => {
+  const item = Grammar.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '文法条目不存在' })
+  res.json(item)
+})
+
+router.put('/grammar/:id', requireAdmin, (req, res) => {
+  const existing = Grammar.findById(req.params.id)
+  if (!existing) return res.status(404).json({ error: '文法条目不存在' })
+
+  const grammar = String(req.body.grammar || '').trim()
+  if (!grammar) return res.status(400).json({ error: '文法内容不能为空' })
+
+  Grammar.update(req.params.id, {
+    grammar,
+    brief_logic: req.body.brief_logic,
+    meaning: req.body.meaning,
+    translation: req.body.translation,
+    formation: req.body.formation,
+    notes: req.body.notes,
+    examples: req.body.examples
+  })
+  res.json({ success: true })
+})
+
+router.delete('/grammar/:id', requireAdmin, (req, res) => {
+  const existing = Grammar.findById(req.params.id)
+  if (!existing) return res.status(404).json({ error: '文法条目不存在' })
+  Grammar.delete(req.params.id)
+  res.json({ success: true })
+})
+
+router.get('/texts/options', requireAdmin, (req, res) => {
+  res.json(Text.options())
+})
+
+router.get('/texts', requireAdmin, (req, res) => {
+  res.json(Text.list({
+    limit: parseLimit(req.query.limit, 50, 500),
+    offset: parseOffset(req.query.offset),
+    textbookId: req.query.textbookId,
+    idOrder: req.query.id_order || req.query.idOrder || 'asc'
+  }))
+})
+
+router.post('/texts', requireAdmin, (req, res) => {
+  const title = String(req.body.title || '').trim()
+  if (!title) return res.status(400).json({ error: '课文名称不能为空' })
+
+  const textbookId = Number(req.body.textbook_id)
+  if (!Text.textbookExists(textbookId)) {
+    return res.status(400).json({ error: '教材不存在' })
+  }
+
+  const id = Text.create({
+    ...req.body,
+    textbook_id: textbookId,
+    title
+  })
+  res.status(201).json({ id })
+})
+
+router.get('/texts/:id', requireAdmin, (req, res) => {
+  const item = Text.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '课文条目不存在' })
+  res.json(item)
+})
+
+router.put('/texts/:id', requireAdmin, (req, res) => {
+  const existing = Text.findById(req.params.id)
+  if (!existing) return res.status(404).json({ error: '课文条目不存在' })
+
+  const title = String(req.body.title || '').trim()
+  if (!title) return res.status(400).json({ error: '课文名称不能为空' })
+
+  Text.update(req.params.id, {
+    lesson_number: req.body.lesson_number,
+    unit_number: req.body.unit_number,
+    title,
+    content: req.body.content
+  })
+  res.json({ success: true })
+})
+
+router.delete('/texts/:id', requireAdmin, (req, res) => {
+  const existing = Text.findById(req.params.id)
+  if (!existing) return res.status(404).json({ error: '课文条目不存在' })
+  Text.delete(req.params.id)
+  res.json({ success: true })
+})
+
+router.get('/reading-materials', requireAdmin, (req, res) => {
+  const result = ReadingMaterial.list({
+    limit: parseLimit(req.query.limit, 50, 500),
+    offset: parseOffset(req.query.offset),
+    keyword: req.query.keyword || '',
+    idOrder: req.query.id_order || req.query.idOrder || 'desc'
+  })
+  const baseUrl = `${req.protocol}://${req.get('host')}`
+  res.json({
+    rows: result.rows.map((row) => ({
+      ...row,
+      view_url: row.can_view ? `${baseUrl}/admin/reading-materials/open?token=${ReadingMaterial.issueAccessToken(row.id)}` : null
+    })),
+    total: result.total
+  })
+})
+
+router.post(
+  '/reading-materials/upload',
+  requireAdmin,
+  express.raw({ type: '*/*', limit: '200mb' }),
+  (req, res) => {
+    try {
+      const originalFilename = decodeHeader(req.get('x-file-name'))
+      const title = decodeHeader(req.get('x-title'))
+      const id = ReadingMaterial.create({
+        title,
+        originalFilename,
+        buffer: req.body,
+        createdBy: req.admin?.id
+      })
+      res.status(201).json({ id })
+    } catch (error) {
+      return res.status(400).json({ error: error.message || '上传失败' })
+    }
+  }
+)
+
+router.get('/reading-materials/open', (req, res) => {
+  const payload = ReadingMaterial.resolveAccessToken(req.query.token)
+  if (!payload) return res.status(401).json({ error: '查看链接已失效' })
+
+  const item = ReadingMaterial.findById(payload.id)
+  if (!item) return res.status(404).json({ error: '阅读材料不存在' })
+  return streamReadingMaterial(res, item, { view: true })
+})
+
+router.get('/reading-materials/:id/open-link', requireAdmin, (req, res) => {
+  const item = ReadingMaterial.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '阅读材料不存在' })
+  if (!ReadingMaterial.canView(item)) return res.status(400).json({ error: '该文件暂不可在线查看，请下载后打开' })
+
+  const token = ReadingMaterial.issueAccessToken(item.id)
+  const baseUrl = `${req.protocol}://${req.get('host')}`
+  res.json({ url: `${baseUrl}/admin/reading-materials/open?token=${token}` })
+})
+
+router.get('/reading-materials/:id', requireAdmin, (req, res) => {
+  const item = ReadingMaterial.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '阅读材料不存在' })
+  const { file_path, ...publicItem } = item
+  res.json(publicItem)
+})
+
+router.get('/reading-materials/:id/content', requireAdmin, (req, res) => {
+  const item = ReadingMaterial.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '阅读材料不存在' })
+  return streamReadingMaterial(res, item)
+})
+
+router.put('/reading-materials/:id', requireAdmin, (req, res) => {
+  const existing = ReadingMaterial.findById(req.params.id)
+  if (!existing) return res.status(404).json({ error: '阅读材料不存在' })
+
+  const title = String(req.body.title || '').trim()
+  if (!title) return res.status(400).json({ error: '标题不能为空' })
+
+  ReadingMaterial.update(req.params.id, { title })
+  res.json({ success: true })
+})
+
+router.delete('/reading-materials/:id', requireAdmin, (req, res) => {
+  const existing = ReadingMaterial.findById(req.params.id)
+  if (!existing) return res.status(404).json({ error: '阅读材料不存在' })
+  ReadingMaterial.delete(req.params.id)
   res.json({ success: true })
 })
 

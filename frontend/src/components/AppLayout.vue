@@ -5,7 +5,7 @@
         <span>総日ナビ</span>
       </div>
       <nav>
-        <RouterLink to="/" end>仪表盘</RouterLink>
+        <RouterLink to="/" end>首页</RouterLink>
         <RouterLink v-if="isUserMode" to="/course-study">课程学习</RouterLink>
         <RouterLink v-if="isUserMode" to="/word-study">单词学习</RouterLink>
         <RouterLink v-if="isUserMode" to="/grammar-study">文法学习</RouterLink>
@@ -14,6 +14,9 @@
         <RouterLink v-if="isUserMode" to="/reading-materials">阅读材料</RouterLink>
         <RouterLink v-if="isPrivileged" to="/users">用户管理</RouterLink>
         <RouterLink v-if="isPrivileged" to="/vocabulary">词库管理</RouterLink>
+        <RouterLink v-if="isPrivileged" to="/grammar">文法管理</RouterLink>
+        <RouterLink v-if="isPrivileged" to="/texts">课文管理</RouterLink>
+        <RouterLink v-if="isPrivileged" to="/reading-materials-management">阅读材料管理</RouterLink>
         <RouterLink v-if="isPrivileged" to="/feedback">反馈处理</RouterLink>
         <RouterLink v-if="isDev" to="/database">数据库管理</RouterLink>
       </nav>
@@ -87,9 +90,12 @@ const feedbackForm = reactive({
 const toast = reactive({ visible: false, message: '', type: 'info' });
 
 const titles = {
-  Dashboard: '仪表盘',
+  Dashboard: '首页',
   Users: '用户管理',
   Vocabulary: '词库管理',
+  Grammar: '文法管理',
+  Texts: '课文管理',
+  ReadingMaterialsManagement: '阅读材料管理',
   Feedback: '反馈处理',
   DatabaseManagement: '数据库管理',
   CourseStudy: '课程学习',
@@ -102,7 +108,7 @@ const titles = {
 
 const user = computed(() => state.user);
 const title = computed(() => {
-  if (route.name === 'Dashboard' && !isPrivileged.value) return '欢迎页';
+  if (route.name === 'Dashboard' && !isPrivileged.value) return '首页';
   return titles[route.name] || '総日ナビ';
 });
 const roleLabel = computed(() => {

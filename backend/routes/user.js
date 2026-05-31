@@ -1,6 +1,8 @@
 const express = require('express')
+const fs = require('fs')
 const router = express.Router()
 const { User } = require('../models/User')
+const { ReadingMaterial } = require('../models/ReadingMaterial')
 const { authMiddleware, signUserToken, USER_JWT_EXPIRES_IN } = require('../middleware/auth')
 
 const USERNAME_PATTERN = /^[A-Za-z0-9]{6,15}$/
@@ -13,6 +15,48 @@ function fieldError(res, status, field, message) {
     error: message,
     errors: { [field]: message }
   })
+}
+
+function parseLimit(value, fallback = 50, max = 200) {
+  const number = Number(value || fallback)
+  if (!Number.isFinite(number) || number <= 0) return fallback
+  return Math.min(Math.floor(number), max)
+}
+
+function parseOffset(value) {
+  const number = Number(value || 0)
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0
+}
+
+function streamReadingMaterial(res, item, { view = false } = {}) {
+  if (view && !ReadingMaterial.canView(item)) {
+    return res.status(400).json({ error: '该文件暂不可在线查看，请下载后打开' })
+  }
+
+  const filePath = view ? ReadingMaterial.viewAbsolutePath(item) : ReadingMaterial.fileAbsolutePath(item)
+  if (!filePath || !fs.existsSync(filePath)) {
+    return res.status(404).json({ error: '文件不存在' })
+  }
+
+  const fileName = view ? ReadingMaterial.viewFilename(item) : ReadingMaterial.downloadFilename(item)
+  res.setHeader('Content-Type', view ? ReadingMaterial.viewContentType(item) : ReadingMaterial.contentType(item))
+  res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`)
+  return fs.createReadStream(filePath).pipe(res)
+}
+
+function publicReadingMaterial(row) {
+  if (!row) return row
+  const {
+    stored_filename,
+    content_hash,
+    created_by,
+    preview_file_path,
+    conversion_status,
+    conversion_error,
+    converted_at,
+    ...publicItem
+  } = row
+  return publicItem
 }
 
 function validatePassword(value) {
@@ -93,6 +137,48 @@ router.post('/login', (req, res) => {
 
 router.get('/me', authMiddleware, (req, res) => {
   res.json({ success: true, user: req.user })
+})
+
+router.get('/reading-materials', authMiddleware, (req, res) => {
+  const result = ReadingMaterial.list({
+    limit: parseLimit(req.query.limit, 50, 500),
+    offset: parseOffset(req.query.offset),
+    keyword: req.query.keyword || '',
+    idOrder: req.query.id_order || req.query.idOrder || 'desc'
+  })
+  const baseUrl = `${req.protocol}://${req.get('host')}`
+  res.json({
+    rows: result.rows.map((row) => publicReadingMaterial({
+      ...row,
+      view_url: row.can_view ? `${baseUrl}/api/user/reading-materials/open?token=${ReadingMaterial.issueAccessToken(row.id)}` : null
+    })),
+    total: result.total
+  })
+})
+
+router.get('/reading-materials/open', (req, res) => {
+  const payload = ReadingMaterial.resolveAccessToken(req.query.token)
+  if (!payload) return res.status(401).json({ error: '查看链接已失效' })
+
+  const item = ReadingMaterial.findById(payload.id)
+  if (!item) return res.status(404).json({ error: '阅读材料不存在' })
+  return streamReadingMaterial(res, item, { view: true })
+})
+
+router.get('/reading-materials/:id/open-link', authMiddleware, (req, res) => {
+  const item = ReadingMaterial.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '阅读材料不存在' })
+  if (!ReadingMaterial.canView(item)) return res.status(400).json({ error: '该文件暂不可在线查看，请下载后打开' })
+
+  const token = ReadingMaterial.issueAccessToken(item.id)
+  const baseUrl = `${req.protocol}://${req.get('host')}`
+  res.json({ url: `${baseUrl}/api/user/reading-materials/open?token=${token}` })
+})
+
+router.get('/reading-materials/:id/content', authMiddleware, (req, res) => {
+  const item = ReadingMaterial.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '阅读材料不存在' })
+  return streamReadingMaterial(res, item)
 })
 
 module.exports = router

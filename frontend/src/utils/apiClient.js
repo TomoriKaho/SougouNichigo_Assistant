@@ -142,6 +142,10 @@ export function getApiBase() {
   return API_BASE;
 }
 
+export function getApiRoot() {
+  return API_ROOT;
+}
+
 export function getAdminToken() {
   return getToken();
 }

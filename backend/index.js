@@ -30,6 +30,9 @@ app.get('/api/health', (req, res) => {
 })
 
 app.use((err, req, res, next) => {
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: '上传文件超过大小限制' })
+  }
   console.error(err)
   res.status(500).json({ error: '服务器内部错误' })
 })
