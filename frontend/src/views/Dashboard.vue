@@ -56,6 +56,39 @@
         </div>
       </section>
     </div>
+
+    <div v-if="!isPrivileged" class="dashboard-user-footer">
+      <a
+        class="dashboard-user-link"
+        href="https://tomorikaho.github.io/SounichiNavi/"
+        target="_blank"
+        rel="noreferrer"
+      >
+        查看文档
+      </a>
+      <button class="dashboard-user-link" type="button" @click="openContact">联系开发者</button>
+      <a
+        class="dashboard-user-link"
+        href="https://github.com/TomoriKaho/SounichiNavi"
+        target="_blank"
+        rel="noreferrer"
+      >
+        参与开发
+      </a>
+    </div>
+
+    <div v-if="contactOpen" class="overlay">
+      <div class="modal dashboard-contact-modal">
+        <div class="modal-header">
+          <h3>联系方式</h3>
+          <button class="icon-close-button" type="button" aria-label="关闭联系方式弹窗" @click="closeContact">×</button>
+        </div>
+        <div class="dashboard-contact-body">
+          <p>邮箱：2300018314@stu.pku.edu.cn</p>
+          <p>微信&电话：15651466403</p>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -68,6 +101,7 @@ import { useAuth } from '../composables/useAuth';
 const router = useRouter();
 const { state, isPrivileged } = useAuth();
 const stats = ref(null);
+const contactOpen = ref(false);
 
 const welcomeText = computed(() => state.user?.username || state.user?.email || '管理员');
 const welcomeSubtext = computed(() => {
@@ -115,6 +149,14 @@ const statCards = computed(() => [
 
 function goTo(routeName) {
   router.push({ name: routeName });
+}
+
+function openContact() {
+  contactOpen.value = true;
+}
+
+function closeContact() {
+  contactOpen.value = false;
 }
 
 async function loadStats() {

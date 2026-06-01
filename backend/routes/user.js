@@ -4,6 +4,7 @@ const router = express.Router()
 const { User } = require('../models/User')
 const { ReadingMaterial } = require('../models/ReadingMaterial')
 const { Grammar } = require('../models/Grammar')
+const { Text } = require('../models/Text')
 const { authMiddleware, signUserToken, USER_JWT_EXPIRES_IN } = require('../middleware/auth')
 
 const USERNAME_PATTERN = /^[A-Za-z0-9]{6,15}$/
@@ -162,6 +163,19 @@ router.get('/grammar/:id', authMiddleware, (req, res) => {
   const item = Grammar.findById(req.params.id)
   if (!item) return res.status(404).json({ error: '文法条目不存在' })
   res.json(item)
+})
+
+router.get('/texts/options', authMiddleware, (req, res) => {
+  res.json(Text.options())
+})
+
+router.get('/texts', authMiddleware, (req, res) => {
+  res.json(Text.list({
+    limit: parseLimit(req.query.limit, 50, 500),
+    offset: parseOffset(req.query.offset),
+    textbookId: req.query.textbookId,
+    idOrder: req.query.id_order || req.query.idOrder || 'asc'
+  }))
 })
 
 router.get('/reading-materials', authMiddleware, (req, res) => {

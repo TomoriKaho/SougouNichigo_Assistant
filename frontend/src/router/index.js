@@ -6,6 +6,7 @@ import Users from '../views/Users.vue';
 import Vocabulary from '../views/Vocabulary.vue';
 import Grammar from '../views/Grammar.vue';
 import GrammarStudy from '../views/GrammarStudy.vue';
+import CourseStudy from '../views/CourseStudy.vue';
 import Texts from '../views/Texts.vue';
 import ReadingMaterials from '../views/ReadingMaterials.vue';
 import ReadingMaterialsManagement from '../views/ReadingMaterialsManagement.vue';
@@ -27,7 +28,7 @@ const routes = [
     meta: { requiresAuth: true },
     children: [
       { path: '', name: 'Dashboard', component: Dashboard },
-      { path: 'course-study', name: 'CourseStudy', component: UserPlaceholder, meta: { title: '课程学习', requiresUser: true } },
+      { path: 'course-study', name: 'CourseStudy', component: CourseStudy, meta: { title: '课程学习', requiresUser: true } },
       { path: 'word-study', name: 'WordStudy', component: UserPlaceholder, meta: { title: '单词学习', requiresUser: true } },
       { path: 'grammar-study', name: 'GrammarStudy', component: GrammarStudy, meta: { title: '文法学习', requiresUser: true } },
       { path: 'translation-practice', name: 'TranslationPractice', component: UserPlaceholder, meta: { title: '翻译练习', requiresUser: true } },
