@@ -234,7 +234,7 @@ function showToast(message, type = 'info') {
   toast.message = message;
   toast.type = type;
   toast.visible = true;
-  setTimeout(() => (toast.visible = false), 3000);
+  setTimeout(() => (toast.visible = false), 1600);
 }
 
 function resetErrors(target) {

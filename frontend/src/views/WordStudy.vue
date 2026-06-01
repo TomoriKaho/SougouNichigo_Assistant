@@ -86,6 +86,14 @@
               >
                 {{ item.is_favorite ? '★' : '☆' }}
               </button>
+              <button
+                class="word-study-question-button"
+                type="button"
+                aria-label="提问"
+                @click="notifyQuestionPending"
+              >
+                ?
+              </button>
             </div>
           </article>
         </div>
@@ -168,7 +176,7 @@ function showToast(message, type = 'info') {
   toast.message = message;
   toast.type = type;
   toast.visible = true;
-  setTimeout(() => (toast.visible = false), 3000);
+  setTimeout(() => (toast.visible = false), 1600);
 }
 
 function handleApiError(err) {
@@ -237,6 +245,10 @@ function toggleIdOrder() {
 
 function notifyPending() {
   showToast('练习功能暂未开放');
+}
+
+function notifyQuestionPending() {
+  showToast('提问功能暂未开放');
 }
 
 function partOfSpeechMeta(item) {

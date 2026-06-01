@@ -336,7 +336,7 @@ function showToast(message, type = 'info') {
   toast.visible = true;
   setTimeout(() => {
     toast.visible = false;
-  }, 3000);
+  }, 1600);
 }
 
 function openFeedback() {
