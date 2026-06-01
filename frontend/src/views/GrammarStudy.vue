@@ -5,8 +5,15 @@
         <h2>文法学习</h2>
         <p class="muted total-count">共 {{ total }} 条</p>
       </div>
-      <div class="toolbar management-toolbar">
-        <div class="toolbar-left">
+        <div class="toolbar management-toolbar">
+          <div class="toolbar-left">
+          <div class="favorite-filter-control">
+            <span>只看收藏</span>
+            <label class="switch">
+              <input v-model="filters.favoritesOnly" type="checkbox" />
+              <span class="slider"></span>
+            </label>
+          </div>
           <select v-model.number="filters.textbookId">
             <option v-for="textbook in textbooks" :key="textbook.id" :value="textbook.id">{{ textbook.name }}</option>
           </select>
@@ -55,6 +62,15 @@
             <template v-for="item in rows" :key="item.id">
               <tr class="grammar-study-row" :class="{ expanded: isExpanded(item.id) }" @click="toggleExpanded(item)">
                 <td>
+                  <button
+                    class="grammar-favorite-button"
+                    :class="{ 'is-favorite': item.is_favorite }"
+                    type="button"
+                    :aria-label="item.is_favorite ? '取消收藏文法' : '收藏文法'"
+                    @click.stop="toggleFavorite(item)"
+                  >
+                    {{ item.is_favorite ? '★' : '☆' }}
+                  </button>
                   <span class="grammar-entry-text" :title="grammarDisplay(item)">{{ grammarDisplay(item) }}</span>
                 </td>
                 <td>{{ item.textbook_name || '-' }}</td>
@@ -62,7 +78,7 @@
                 <td>{{ item.unit_name || '-' }}</td>
                 <td class="actions grammar-study-actions">
                   <button class="ghost" @click.stop="toggleExpanded(item)">
-                    {{ isExpanded(item.id) ? '收起' : '展开' }}
+                    {{ isExpanded(item.id) ? '收起' : '详情' }}
                   </button>
                   <button class="ghost" @click.stop="notifyPending('练习')">练习</button>
                   <button class="ghost" @click.stop="notifyPending('提问')">提问</button>
@@ -163,7 +179,8 @@ const toast = reactive({ visible: false, message: '', type: 'info' });
 const filters = reactive({
   textbookId: 0,
   lessonScope: 'all',
-  unitId: 0
+  unitId: 0,
+  favoritesOnly: false
 });
 
 const textbooks = computed(() => options.value.textbooks || []);
@@ -219,6 +236,7 @@ async function refresh() {
         lessonNumberMin: lessonRange.value.min,
         lessonNumberMax: lessonRange.value.max,
         unitId: lessonFilterAll.value ? '' : filters.unitId || '',
+        favoritesOnly: filters.favoritesOnly ? '1' : '',
         id_order: idOrder.value
       }
     });
@@ -294,6 +312,23 @@ async function loadDetail(id, force = false) {
   }
 }
 
+async function toggleFavorite(item) {
+  const nextFavorite = !item.is_favorite;
+  try {
+    await apiRequest(`/api/user/grammar/${item.id}/favorite`, {
+      method: nextFavorite ? 'POST' : 'DELETE'
+    });
+    if (filters.favoritesOnly) {
+      await refresh();
+    } else {
+      item.is_favorite = nextFavorite;
+    }
+    showToast(nextFavorite ? '已收藏文法' : '已取消收藏', 'success');
+  } catch (err) {
+    handleApiError(err);
+  }
+}
+
 function notifyPending(label) {
   showToast(`${label}功能暂未开放`);
 }
@@ -312,6 +347,11 @@ watch(() => filters.lessonScope, () => {
 });
 
 watch(() => [filters.unitId, keyword.value], () => {
+  page.value = 1;
+  refresh();
+});
+
+watch(() => filters.favoritesOnly, () => {
   page.value = 1;
   refresh();
 });

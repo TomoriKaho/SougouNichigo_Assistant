@@ -4,6 +4,7 @@ const path = require('path')
 const { seedVocabularyFromJson } = require('./seedVocabulary')
 const { seedGrammarFromJson } = require('./seedGrammar')
 const { seedTextFromJson } = require('./seedText')
+const { deriveVocabularyFlags } = require('../lib/vocabularyFlags')
 
 const dataDir = path.resolve(__dirname, '..', '..', 'data')
 fs.mkdirSync(dataDir, { recursive: true })
@@ -77,6 +78,95 @@ function initUserDatabase() {
   `)
   userDb.exec('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)')
   userDb.exec('CREATE INDEX IF NOT EXISTS idx_users_type ON users(user_type)')
+
+  userDb.exec(`
+    CREATE TABLE IF NOT EXISTS classes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      code TEXT UNIQUE NOT NULL,
+      teacher_user_id INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (teacher_user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `)
+
+  const membershipTable = userDb
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'class_memberships'")
+    .get()
+
+  if (!membershipTable) {
+    userDb.exec(`
+      CREATE TABLE class_memberships (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        class_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        member_role TEXT NOT NULL DEFAULT 'student',
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        UNIQUE(class_id, user_id),
+        FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `)
+  } else {
+    const columns = userDb.prepare('PRAGMA table_info(class_memberships)').all().map((item) => item.name)
+    const needsMigration = columns.includes('student_user_id') || !columns.includes('user_id') || !columns.includes('member_role')
+
+    if (needsMigration) {
+      const legacyUserExpression = columns.includes('user_id')
+        ? 'user_id'
+        : columns.includes('student_user_id')
+          ? 'student_user_id'
+          : 'NULL'
+      const legacyRoleExpression = columns.includes('member_role')
+        ? "COALESCE(NULLIF(TRIM(member_role), ''), 'student')"
+        : "'student'"
+      const legacyCreatedExpression = columns.includes('created_at')
+        ? "COALESCE(created_at, datetime('now', 'localtime'))"
+        : "datetime('now', 'localtime')"
+
+      userDb.exec('DROP TABLE IF EXISTS class_memberships_legacy')
+      userDb.exec('ALTER TABLE class_memberships RENAME TO class_memberships_legacy')
+      userDb.exec(`
+        CREATE TABLE class_memberships (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          class_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          member_role TEXT NOT NULL DEFAULT 'student',
+          created_at TEXT DEFAULT (datetime('now', 'localtime')),
+          UNIQUE(class_id, user_id),
+          FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+      `)
+      userDb.exec(`
+        INSERT OR IGNORE INTO class_memberships (id, class_id, user_id, member_role, created_at)
+        SELECT
+          id,
+          class_id,
+          ${legacyUserExpression},
+          ${legacyRoleExpression},
+          ${legacyCreatedExpression}
+        FROM class_memberships_legacy
+      `)
+      userDb.exec('DROP TABLE class_memberships_legacy')
+    }
+  }
+
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_classes_teacher ON classes(teacher_user_id)')
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_classes_code ON classes(code)')
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_class_memberships_class ON class_memberships(class_id)')
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_class_memberships_user ON class_memberships(user_id)')
+
+  userDb.exec(`
+    INSERT OR IGNORE INTO class_memberships (class_id, user_id, member_role, created_at)
+    SELECT
+      c.id,
+      c.teacher_user_id,
+      'teacher',
+      c.created_at
+    FROM classes c
+  `)
 }
 
 function initVocabularyDatabase() {
@@ -139,16 +229,67 @@ function initVocabularyDatabase() {
     )
   `)
 
+  ensureColumn(vocabularyDb, 'vocabulary_entries', 'is_proper_noun', 'is_proper_noun INTEGER DEFAULT 0')
+  ensureColumn(vocabularyDb, 'vocabulary_entries', 'is_onomatopoeia', 'is_onomatopoeia INTEGER DEFAULT 0')
+  ensureColumn(vocabularyDb, 'vocabulary_entries', 'is_loanword', 'is_loanword INTEGER DEFAULT 0')
+  ensureColumn(vocabularyDb, 'vocabulary_entries', 'has_kanji', 'has_kanji INTEGER DEFAULT 0')
+
+  vocabularyDb.exec(`
+    CREATE TABLE IF NOT EXISTS vocabulary_favorites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      vocabulary_id INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      UNIQUE(user_id, vocabulary_id),
+      FOREIGN KEY (vocabulary_id) REFERENCES vocabulary_entries(id) ON DELETE CASCADE
+    )
+  `)
+
   vocabularyDb.exec('CREATE INDEX IF NOT EXISTS idx_vocab_context ON vocabulary_entries(textbook_id, lesson_id, unit_id, table_type)')
   vocabularyDb.exec('CREATE INDEX IF NOT EXISTS idx_vocab_term ON vocabulary_entries(term)')
   vocabularyDb.exec('CREATE INDEX IF NOT EXISTS idx_vocab_supplement ON vocabulary_entries(supplement)')
   vocabularyDb.exec('CREATE INDEX IF NOT EXISTS idx_lessons_textbook ON lessons(textbook_id)')
   vocabularyDb.exec('CREATE INDEX IF NOT EXISTS idx_units_lesson ON units(lesson_id)')
+  vocabularyDb.exec('CREATE INDEX IF NOT EXISTS idx_vocab_favorites_user ON vocabulary_favorites(user_id)')
+  vocabularyDb.exec('CREATE INDEX IF NOT EXISTS idx_vocab_favorites_entry ON vocabulary_favorites(vocabulary_id)')
 
   const total = vocabularyDb.prepare('SELECT COUNT(*) AS total FROM vocabulary_entries').get().total
   if (!dbExisted.vocabulary || total === 0) {
     seedVocabularyFromJson(vocabularyDb)
   }
+
+  const rows = vocabularyDb.prepare(`
+    SELECT id, term, supplement, part_of_speech, explanation
+    FROM vocabulary_entries
+  `).all()
+
+  const updateFlags = vocabularyDb.prepare(`
+    UPDATE vocabulary_entries
+    SET
+      is_proper_noun = ?,
+      is_onomatopoeia = ?,
+      is_loanword = ?,
+      has_kanji = ?
+    WHERE id = ?
+  `)
+
+  vocabularyDb.transaction(() => {
+    rows.forEach((row) => {
+      const flags = deriveVocabularyFlags({
+        term: row.term,
+        supplement: row.supplement,
+        partOfSpeech: row.part_of_speech,
+        explanation: row.explanation
+      })
+      updateFlags.run(
+        flags.properNoun ? 1 : 0,
+        flags.onomatopoeia ? 1 : 0,
+        flags.loanword ? 1 : 0,
+        flags.kanjiWord ? 1 : 0,
+        row.id
+      )
+    })
+  })()
 }
 
 function initGrammarDatabase() {
@@ -211,10 +352,23 @@ function initGrammarDatabase() {
     )
   `)
 
+  grammarDb.exec(`
+    CREATE TABLE IF NOT EXISTS grammar_favorites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      grammar_id INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      UNIQUE(user_id, grammar_id),
+      FOREIGN KEY (grammar_id) REFERENCES grammar_entries(id) ON DELETE CASCADE
+    )
+  `)
+
   grammarDb.exec('CREATE INDEX IF NOT EXISTS idx_grammar_context ON grammar_entries(textbook_id, lesson_id, unit_id)')
   grammarDb.exec('CREATE INDEX IF NOT EXISTS idx_grammar_text ON grammar_entries(grammar)')
   grammarDb.exec('CREATE INDEX IF NOT EXISTS idx_grammar_lessons_textbook ON lessons(textbook_id)')
   grammarDb.exec('CREATE INDEX IF NOT EXISTS idx_grammar_units_lesson ON units(lesson_id)')
+  grammarDb.exec('CREATE INDEX IF NOT EXISTS idx_grammar_favorites_user ON grammar_favorites(user_id)')
+  grammarDb.exec('CREATE INDEX IF NOT EXISTS idx_grammar_favorites_entry ON grammar_favorites(grammar_id)')
 
   const total = grammarDb.prepare('SELECT COUNT(*) AS total FROM grammar_entries').get().total
   if (!dbExisted.grammar || total === 0) {
@@ -282,6 +436,7 @@ function initReadingMaterialsDatabase() {
 
   ensureColumn(readingMaterialsDb, 'reading_materials', 'mime_type', 'mime_type TEXT')
   ensureColumn(readingMaterialsDb, 'reading_materials', 'file_category', "file_category TEXT DEFAULT 'html'")
+  ensureColumn(readingMaterialsDb, 'reading_materials', 'class_id', 'class_id INTEGER')
   ensureColumn(readingMaterialsDb, 'reading_materials', 'preview_file_path', 'preview_file_path TEXT')
   ensureColumn(readingMaterialsDb, 'reading_materials', 'conversion_status', 'conversion_status TEXT')
   ensureColumn(readingMaterialsDb, 'reading_materials', 'conversion_error', 'conversion_error TEXT')
@@ -289,6 +444,7 @@ function initReadingMaterialsDatabase() {
   readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_reading_materials_created ON reading_materials(created_at)')
   readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_reading_materials_hash ON reading_materials(content_hash)')
   readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_reading_materials_category ON reading_materials(file_category)')
+  readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_reading_materials_class ON reading_materials(class_id)')
 }
 
 function initFeedbackDatabase() {

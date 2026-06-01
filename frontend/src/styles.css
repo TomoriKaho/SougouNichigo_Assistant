@@ -701,6 +701,229 @@ textarea:disabled {
   line-height: 1.7;
 }
 
+.table td.classes-actions-cell {
+  display: table-cell;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.classes-actions-header {
+  text-align: right;
+}
+
+.classes-actions-cell {
+  text-align: right;
+}
+
+.classes-table th:last-child,
+.classes-table td:last-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.classes-table td.actions > button + button,
+.classes-table td.actions > button + .table-action-link,
+.classes-table td.actions > .table-action-link + button {
+  margin-left: 8px;
+}
+
+.classroom-name-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.classroom-name-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.classroom-name-edit-button {
+  min-height: 30px;
+  padding: 6px 12px;
+  font-size: 14px;
+  flex: 0 0 auto;
+}
+
+.classroom-code-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.classroom-code-copy-button {
+  min-height: 32px;
+  padding: 6px 12px;
+  font-size: 14px;
+}
+
+.classroom-modal {
+  width: min(520px, 96vw);
+}
+
+.class-detail-page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 18px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.class-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.class-detail-header h2 {
+  margin: 0 0 8px;
+}
+
+.class-detail-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.class-detail-header-search-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.class-detail-header-search-tools input {
+  min-width: 260px;
+}
+
+.class-detail-content {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.class-detail-panel-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.class-detail-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.class-detail-tabbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fffaf4;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.class-detail-tab {
+  min-width: 112px;
+  min-height: 40px;
+  padding: 8px 18px;
+  border-radius: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.class-detail-tab:hover {
+  box-shadow: none;
+}
+
+.class-detail-tab.active {
+  background: var(--theme-red);
+  color: #fff8ed;
+  box-shadow: 0 10px 20px rgba(101, 0, 13, 0.16);
+}
+
+.class-detail-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.class-detail-panel-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-left: auto;
+  transform: translateY(-4px);
+}
+
+.class-detail-total-text {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  transform: translateY(7px);
+}
+
+.class-detail-panel-meta > button {
+  transform: translateY(7px);
+}
+
+.class-detail-inline-pagination {
+  margin-top: 0;
+  gap: 10px;
+}
+
+.class-detail-table-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.class-members-section {
+  min-height: 0;
+}
+
+.class-materials-section {
+  min-height: 0;
+}
+
+.class-materials-panel-head {
+  align-items: flex-start;
+}
+
+.class-detail-materials-toolbar {
+  width: 100%;
+  margin-left: 0;
+  justify-content: flex-end;
+}
+
+.class-reading-materials-table td.actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
 .summary-item {
   width: 100%;
   display: flex;
@@ -1136,6 +1359,45 @@ textarea:disabled {
   min-width: 142px;
 }
 
+.favorite-filter-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.word-study-textbook-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-start;
+  min-width: 142px;
+}
+
+.word-study-textbook-anchor > select {
+  width: 100%;
+}
+
+.word-study-favorite-filter {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+}
+
+.word-study-page .header-row {
+  align-items: flex-start;
+}
+
+.word-study-page .header-copy {
+  align-self: flex-start;
+}
+
+.word-study-page .toolbar {
+  margin-bottom: 0;
+}
+
 .lexicon-filter-bar .lesson-filter-select {
   min-width: 96px;
   width: auto;
@@ -1227,6 +1489,7 @@ textarea:disabled {
 }
 
 .lexicon-entry-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -1248,6 +1511,7 @@ textarea:disabled {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  padding-bottom: 78px;
   padding-right: 2px;
   scrollbar-width: none;
 }
@@ -1399,6 +1663,30 @@ textarea:disabled {
   border-color: rgba(202, 138, 4, 0.26);
 }
 
+.lexicon-entry-tag.tag-proper-noun {
+  background: rgba(24, 76, 121, 0.12);
+  color: #184c79;
+  border-color: rgba(24, 76, 121, 0.2);
+}
+
+.lexicon-entry-tag.tag-onomatopoeia {
+  background: rgba(125, 86, 14, 0.14);
+  color: #8c5d07;
+  border-color: rgba(125, 86, 14, 0.24);
+}
+
+.lexicon-entry-tag.tag-loanword {
+  background: rgba(94, 59, 143, 0.12);
+  color: #5a388d;
+  border-color: rgba(94, 59, 143, 0.2);
+}
+
+.lexicon-entry-tag.tag-kanji-word {
+  background: rgba(86, 125, 89, 0.12);
+  color: #365b3a;
+  border-color: rgba(86, 125, 89, 0.2);
+}
+
 .lexicon-entry-actions {
   display: flex;
   align-self: flex-end;
@@ -1418,6 +1706,63 @@ textarea:disabled {
   font-size: 12px;
   line-height: 1.1;
   box-shadow: none;
+}
+
+.admin-vocabulary-entry-actions {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  margin: 0;
+  padding: 0;
+  z-index: 2;
+}
+
+.admin-vocabulary-entry-tags,
+.word-study-entry-tags {
+  position: absolute;
+  left: 12px;
+  right: 86px;
+  bottom: 12px;
+  margin: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.word-study-entry-actions {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  z-index: 2;
+}
+
+.word-study-entry-actions .word-study-favorite-button {
+  padding: 0;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: rgba(139, 0, 18, 0.52);
+  font-size: 30px;
+  line-height: 1;
+}
+
+.word-study-entry-actions .word-study-favorite-button:hover {
+  background: transparent;
+  box-shadow: none;
+  filter: none;
+  transform: none;
+  color: rgba(139, 0, 18, 0.8);
+}
+
+.word-study-entry-actions .word-study-favorite-button.is-favorite {
+  color: #d8a20d;
+}
+
+.word-study-entry-actions .word-study-favorite-button.is-favorite:hover {
+  color: #c18b00;
 }
 
 .pagination-total {
@@ -1476,6 +1821,10 @@ textarea:disabled {
   width: auto;
 }
 
+.grammar-study-table th:first-child {
+  padding-left: 46px;
+}
+
 .grammar-table th:nth-child(n + 2),
 .grammar-table td:nth-child(n + 2) {
   width: 1%;
@@ -1510,6 +1859,37 @@ textarea:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: bottom;
+}
+
+.grammar-favorite-button {
+  padding: 0;
+  min-width: 0;
+  margin-right: 10px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: rgba(139, 0, 18, 0.52);
+  font-family: 'Yu Mincho', 'Hiragino Mincho ProN', 'Noto Serif JP', 'Songti SC', serif;
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.grammar-favorite-button:hover {
+  background: transparent;
+  box-shadow: none;
+  filter: none;
+  transform: none;
+  color: rgba(139, 0, 18, 0.8);
+}
+
+.grammar-favorite-button.is-favorite {
+  color: #d8a20d;
+}
+
+.grammar-favorite-button.is-favorite:hover {
+  color: #c18b00;
 }
 
 .grammar-context-grid {
@@ -1637,11 +2017,15 @@ textarea:disabled {
 .course-study-page .course-study-index-text {
   display: inline-block;
   color: var(--theme-red-dark);
-  font-family: 'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', serif;
+  font-family: 'Songti SC', 'STSong', 'SimSun', serif;
   font-size: 18px;
   font-weight: 700;
   line-height: 1.35;
   letter-spacing: 0;
+}
+
+.course-study-page .course-study-index-number {
+  font-family: 'Times New Roman', Times, serif;
 }
 
 .course-study-page .course-study-title {
@@ -2164,6 +2548,38 @@ textarea:disabled {
 
 .switch input:checked+.slider::before {
   transform: translateX(20px);
+}
+
+.drawer-flag-section {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.drawer-flag-section h4 {
+  margin: 0 0 14px;
+  font-size: 18px;
+  color: var(--theme-red);
+}
+
+.drawer-flag-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
+}
+
+.drawer-flag-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 248, 237, 0.56);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .file-grid {

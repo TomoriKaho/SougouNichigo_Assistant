@@ -99,13 +99,15 @@ import { apiRequest } from '../utils/apiClient';
 import { useAuth } from '../composables/useAuth';
 
 const router = useRouter();
-const { state, isPrivileged } = useAuth();
+const { state, isPrivileged, isTeacher } = useAuth();
 const stats = ref(null);
 const contactOpen = ref(false);
 
 const welcomeText = computed(() => state.user?.username || state.user?.email || '管理员');
 const welcomeSubtext = computed(() => {
-  if (!isPrivileged.value) return '您已登录総日ナビ。';
+  if (!isPrivileged.value) {
+    return isTeacher.value ? '您已登录総日ナビ，可以创建、管理并进入自己的班级。' : '您已登录総日ナビ，可以通过班级码加入并进入自己的班级。';
+  }
   return '在这里，您可以管理综合日语词库、文法、课文、阅读材料、后台用户和反馈。';
 });
 const statCards = computed(() => [
@@ -132,12 +134,6 @@ const statCards = computed(() => [
     label: '课文',
     value: stats.value?.text?.total ?? '-',
     routeName: 'Texts'
-  },
-  {
-    key: 'readingMaterials',
-    label: '阅读材料',
-    value: stats.value?.readingMaterials?.total ?? '-',
-    routeName: 'ReadingMaterialsManagement'
   },
   {
     key: 'feedback',

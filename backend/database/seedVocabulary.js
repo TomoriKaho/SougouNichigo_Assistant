@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const { deriveVocabularyFlags } = require('../lib/vocabularyFlags')
 
 const DEFAULT_TEXTBOOK_NAME = '综合日语 第四册'
 const VOCABULARY_JSON = path.resolve(__dirname, '..', '..', 'data', 'Vocabulary_4.json')
@@ -73,11 +74,15 @@ function seedVocabularyFromJson(db) {
       accent,
       part_of_speech,
       explanation,
+      is_proper_noun,
+      is_onomatopoeia,
+      is_loanword,
+      has_kanji,
       order_index,
       created_at,
       updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
   `)
 
   let imported = 0
@@ -104,6 +109,16 @@ function seedVocabularyFromJson(db) {
           words.forEach((word) => {
             const term = normalizeText(word['词条'])
             if (!term) return
+            const supplement = normalizeText(word['词条补充'])
+            const accent = normalizeText(word['声调'])
+            const partOfSpeech = normalizeText(word['词性'])
+            const explanation = normalizeText(word['词语解释'] || word['解释'])
+            const flags = deriveVocabularyFlags({
+              term,
+              supplement,
+              partOfSpeech,
+              explanation
+            })
 
             imported += 1
             insertEntry.run(
@@ -113,10 +128,14 @@ function seedVocabularyFromJson(db) {
               tableType,
               sourceLabel,
               term,
-              normalizeText(word['词条补充']),
-              normalizeText(word['声调']),
-              normalizeText(word['词性']),
-              normalizeText(word['词语解释'] || word['解释']),
+              supplement,
+              accent,
+              partOfSpeech,
+              explanation,
+              flags.properNoun ? 1 : 0,
+              flags.onomatopoeia ? 1 : 0,
+              flags.loanword ? 1 : 0,
+              flags.kanjiWord ? 1 : 0,
               imported
             )
           })

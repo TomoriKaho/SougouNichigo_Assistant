@@ -77,10 +77,22 @@
               </div>
               <p v-if="item.supplement" class="lexicon-entry-supplement">({{ item.supplement }})</p>
               <p class="lexicon-entry-translation">{{ item.explanation || '-' }}</p>
-              <div class="lexicon-entry-actions">
-                <button class="ghost" @click="openEdit(item)">编辑</button>
-                <button class="danger" @click="confirmDelete(item)">删除</button>
+            </div>
+            <div v-if="metadataTags(item).length" class="lexicon-entry-tags admin-vocabulary-entry-tags">
+              <div class="lexicon-entry-tag-row">
+                <span
+                  v-for="tag in metadataTags(item)"
+                  :key="tag.key"
+                  class="lexicon-entry-tag"
+                  :class="tag.className"
+                >
+                  {{ tag.label }}
+                </span>
               </div>
+            </div>
+            <div class="lexicon-entry-actions admin-vocabulary-entry-actions">
+              <button class="ghost" @click="openEdit(item)">编辑</button>
+              <button class="danger" @click="confirmDelete(item)">删除</button>
             </div>
           </article>
         </div>
@@ -133,25 +145,6 @@
               </div>
             </template>
 
-            <div v-else class="detail-grid vocabulary-context-grid">
-              <div class="detail-item">
-                <span class="detail-label">教材</span>
-                <span class="detail-value">{{ activeEntry?.textbook_name || '-' }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">课</span>
-                <span class="detail-value">第{{ activeEntry?.lesson_number || '-' }}课 {{ activeEntry?.lesson_title || '' }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">单元</span>
-                <span class="detail-value">{{ activeEntry?.unit_name || '-' }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">词表</span>
-                <span class="detail-value">{{ activeEntry?.table_type_label || '-' }}</span>
-              </div>
-            </div>
-
             <div class="drawer-inline-row drawer-field-row">
               <label class="drawer-field">
                 词条
@@ -179,6 +172,40 @@
               解释
               <textarea v-model="form.explanation" rows="6"></textarea>
             </label>
+
+            <div v-if="editingId" class="drawer-flag-section">
+              <h4>词条标签</h4>
+              <div class="drawer-flag-grid">
+                <div class="drawer-flag-item">
+                  <span>专有名词</span>
+                  <label class="switch">
+                    <input v-model="form.is_proper_noun" type="checkbox" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+                <div class="drawer-flag-item">
+                  <span>オノマトペ</span>
+                  <label class="switch">
+                    <input v-model="form.is_onomatopoeia" type="checkbox" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+                <div class="drawer-flag-item">
+                  <span>外来词</span>
+                  <label class="switch">
+                    <input v-model="form.is_loanword" type="checkbox" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+                <div class="drawer-flag-item">
+                  <span>汉字词</span>
+                  <label class="switch">
+                    <input v-model="form.has_kanji" type="checkbox" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
           </form>
         </div>
       </div>
@@ -242,7 +269,11 @@ const form = reactive({
   supplement: '',
   accent: '',
   part_of_speech: '',
-  explanation: ''
+  explanation: '',
+  is_proper_noun: false,
+  is_onomatopoeia: false,
+  is_loanword: false,
+  has_kanji: false
 });
 const formErrors = reactive({ term: '' });
 
@@ -293,6 +324,10 @@ function resetForm() {
   form.accent = '';
   form.part_of_speech = '';
   form.explanation = '';
+  form.is_proper_noun = false;
+  form.is_onomatopoeia = false;
+  form.is_loanword = false;
+  form.has_kanji = false;
   formErrors.term = '';
 }
 
@@ -373,6 +408,10 @@ async function openEdit(item) {
     form.accent = data.accent || '';
     form.part_of_speech = data.part_of_speech || '';
     form.explanation = data.explanation || '';
+    form.is_proper_noun = !!data.is_proper_noun;
+    form.is_onomatopoeia = !!data.is_onomatopoeia;
+    form.is_loanword = !!data.is_loanword;
+    form.has_kanji = !!data.has_kanji;
     formErrors.term = '';
     drawerOpen.value = true;
   } catch (err) {
@@ -399,19 +438,37 @@ function validateForm() {
 }
 
 function payloadFromForm() {
-  return {
+  const payload = {
     term: form.term.trim(),
     supplement: form.supplement.trim() || null,
     accent: form.accent.trim() || null,
     part_of_speech: form.part_of_speech.trim() || null,
     explanation: form.explanation.trim() || null
   };
+
+  if (editingId.value) {
+    payload.is_proper_noun = form.is_proper_noun;
+    payload.is_onomatopoeia = form.is_onomatopoeia;
+    payload.is_loanword = form.is_loanword;
+    payload.has_kanji = form.has_kanji;
+  }
+
+  return payload;
 }
 
 function partOfSpeechMeta(item) {
   const partOfSpeech = String(item?.part_of_speech || '').trim();
   if (partOfSpeech) return `<${partOfSpeech}>`;
   return '';
+}
+
+function metadataTags(item) {
+  const tags = [];
+  if (item?.is_proper_noun) tags.push({ key: 'proper-noun', label: '专有名词', className: 'tag-proper-noun' });
+  if (item?.is_onomatopoeia) tags.push({ key: 'onomatopoeia', label: 'オノマトペ', className: 'tag-onomatopoeia' });
+  if (item?.is_loanword) tags.push({ key: 'loanword', label: '外来词', className: 'tag-loanword' });
+  if (item?.has_kanji) tags.push({ key: 'kanji-word', label: '汉字词', className: 'tag-kanji-word' });
+  return tags;
 }
 
 async function measureCardScrollbars() {

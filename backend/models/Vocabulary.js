@@ -1,4 +1,5 @@
 const { vocabularyDb } = require('../database/db')
+const { deriveVocabularyFlags } = require('../lib/vocabularyFlags')
 
 const TABLE_TYPE_LABELS = {
   new: '新出単語',
@@ -11,10 +12,40 @@ function normalizeText(value) {
   return text ? text : null
 }
 
+function parseBooleanOverride(value) {
+  if (value === undefined || value === null || value === '') return null
+  if (typeof value === 'boolean') return value
+  const normalized = String(value).trim().toLowerCase()
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false
+  return null
+}
+
+function resolveVocabularyFlags(payload) {
+  const derived = deriveVocabularyFlags({
+    term: payload.term,
+    supplement: payload.supplement,
+    partOfSpeech: payload.part_of_speech,
+    explanation: payload.explanation
+  })
+
+  return {
+    properNoun: parseBooleanOverride(payload.is_proper_noun) ?? derived.properNoun,
+    onomatopoeia: parseBooleanOverride(payload.is_onomatopoeia) ?? derived.onomatopoeia,
+    loanword: parseBooleanOverride(payload.is_loanword) ?? derived.loanword,
+    kanjiWord: parseBooleanOverride(payload.has_kanji) ?? derived.kanjiWord
+  }
+}
+
 function mapEntry(row) {
   if (!row) return null
   return {
     ...row,
+    is_favorite: !!row.is_favorite,
+    is_proper_noun: !!row.is_proper_noun,
+    is_onomatopoeia: !!row.is_onomatopoeia,
+    is_loanword: !!row.is_loanword,
+    has_kanji: !!row.has_kanji,
     table_type_label: TABLE_TYPE_LABELS[row.table_type] || row.source_table_label || row.table_type
   }
 }
@@ -67,6 +98,9 @@ class Vocabulary {
     const offset = Number(filters.offset || 0)
     const clauses = []
     const params = []
+    const joinParams = []
+    const userId = Number(filters.userId || 0)
+    const useFavoriteJoin = userId > 0
 
     if (filters.textbookId) {
       clauses.push('v.textbook_id = ?')
@@ -76,6 +110,16 @@ class Vocabulary {
     if (filters.lessonId) {
       clauses.push('v.lesson_id = ?')
       params.push(Number(filters.lessonId))
+    }
+
+    if (filters.lessonNumberMin) {
+      clauses.push('l.lesson_number >= ?')
+      params.push(Number(filters.lessonNumberMin))
+    }
+
+    if (filters.lessonNumberMax) {
+      clauses.push('l.lesson_number <= ?')
+      params.push(Number(filters.lessonNumberMax))
     }
 
     if (filters.unitId) {
@@ -94,34 +138,49 @@ class Vocabulary {
       params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`)
     }
 
+    if (useFavoriteJoin && filters.favoritesOnly) {
+      clauses.push('vf.id IS NOT NULL')
+    }
+
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
     const order = String(filters.idOrder || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC'
+    const favoriteJoin = useFavoriteJoin
+      ? 'LEFT JOIN vocabulary_favorites vf ON vf.vocabulary_id = v.id AND vf.user_id = ?'
+      : ''
+    const favoriteSelect = useFavoriteJoin
+      ? 'CASE WHEN vf.id IS NULL THEN 0 ELSE 1 END AS is_favorite,'
+      : '0 AS is_favorite,'
+
+    if (useFavoriteJoin) joinParams.push(userId)
 
     const rows = vocabularyDb.prepare(`
       SELECT
         v.*,
+        ${favoriteSelect}
         t.name AS textbook_name,
         l.lesson_number,
         l.title AS lesson_title,
         u.unit_number,
         u.name AS unit_name
       FROM vocabulary_entries v
+      ${favoriteJoin}
       JOIN textbooks t ON t.id = v.textbook_id
       JOIN lessons l ON l.id = v.lesson_id
       JOIN units u ON u.id = v.unit_id
       ${where}
       ORDER BY CAST(v.id AS INTEGER) ${order}
       LIMIT ? OFFSET ?
-    `).all(...params, limit, offset).map(mapEntry)
+    `).all(...joinParams, ...params, limit, offset).map(mapEntry)
 
     const total = vocabularyDb.prepare(`
       SELECT COUNT(*) AS total
       FROM vocabulary_entries v
+      ${favoriteJoin}
       JOIN textbooks t ON t.id = v.textbook_id
       JOIN lessons l ON l.id = v.lesson_id
       JOIN units u ON u.id = v.unit_id
       ${where}
-    `).get(...params).total
+    `).get(...joinParams, ...params).total
 
     return { rows, total }
   }
@@ -157,6 +216,7 @@ class Vocabulary {
   static create(payload) {
     const tableType = payload.table_type === 'practice' ? 'practice' : 'new'
     const sourceLabel = TABLE_TYPE_LABELS[tableType]
+    const flags = resolveVocabularyFlags(payload)
     const result = vocabularyDb.prepare(`
       INSERT INTO vocabulary_entries (
         textbook_id,
@@ -169,11 +229,15 @@ class Vocabulary {
         accent,
         part_of_speech,
         explanation,
+        is_proper_noun,
+        is_onomatopoeia,
+        is_loanword,
+        has_kanji,
         order_index,
         created_at,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
     `).run(
       Number(payload.textbook_id),
       Number(payload.lesson_id),
@@ -185,12 +249,17 @@ class Vocabulary {
       normalizeText(payload.accent),
       normalizeText(payload.part_of_speech),
       normalizeText(payload.explanation),
+      flags.properNoun ? 1 : 0,
+      flags.onomatopoeia ? 1 : 0,
+      flags.loanword ? 1 : 0,
+      flags.kanjiWord ? 1 : 0,
       Number(payload.order_index || 0)
     )
     return result.lastInsertRowid
   }
 
   static update(id, payload) {
+    const flags = resolveVocabularyFlags(payload)
     return vocabularyDb.prepare(`
       UPDATE vocabulary_entries
       SET
@@ -199,6 +268,10 @@ class Vocabulary {
         accent = ?,
         part_of_speech = ?,
         explanation = ?,
+        is_proper_noun = ?,
+        is_onomatopoeia = ?,
+        is_loanword = ?,
+        has_kanji = ?,
         updated_at = datetime('now', 'localtime')
       WHERE id = ?
     `).run(
@@ -207,12 +280,31 @@ class Vocabulary {
       normalizeText(payload.accent),
       normalizeText(payload.part_of_speech),
       normalizeText(payload.explanation),
+      flags.properNoun ? 1 : 0,
+      flags.onomatopoeia ? 1 : 0,
+      flags.loanword ? 1 : 0,
+      flags.kanjiWord ? 1 : 0,
       id
     )
   }
 
   static delete(id) {
     return vocabularyDb.prepare('DELETE FROM vocabulary_entries WHERE id = ?').run(id)
+  }
+
+  static setFavorite(userId, vocabularyId, favorite = true) {
+    if (favorite) {
+      vocabularyDb.prepare(`
+        INSERT OR IGNORE INTO vocabulary_favorites (user_id, vocabulary_id)
+        VALUES (?, ?)
+      `).run(Number(userId), Number(vocabularyId))
+      return
+    }
+
+    vocabularyDb.prepare(`
+      DELETE FROM vocabulary_favorites
+      WHERE user_id = ? AND vocabulary_id = ?
+    `).run(Number(userId), Number(vocabularyId))
   }
 
   static counts() {

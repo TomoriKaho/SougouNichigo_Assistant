@@ -5,6 +5,8 @@ const { User } = require('../models/User')
 const { ReadingMaterial } = require('../models/ReadingMaterial')
 const { Grammar } = require('../models/Grammar')
 const { Text } = require('../models/Text')
+const { Vocabulary } = require('../models/Vocabulary')
+const { Classroom } = require('../models/Classroom')
 const { authMiddleware, signUserToken, USER_JWT_EXPIRES_IN } = require('../middleware/auth')
 
 const USERNAME_PATTERN = /^[A-Za-z0-9]{6,15}$/
@@ -28,6 +30,10 @@ function parseLimit(value, fallback = 50, max = 200) {
 function parseOffset(value) {
   const number = Number(value || 0)
   return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0
+}
+
+function parseFlag(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase())
 }
 
 function streamReadingMaterial(res, item, { view = false } = {}) {
@@ -68,6 +74,13 @@ function validatePassword(value) {
   const hasSymbol = /[!@#$%^&*()_+\-.]/.test(password)
   const categoryCount = [hasLetter, hasNumber, hasSymbol].filter(Boolean).length
   return PASSWORD_PATTERN.test(password) && categoryCount >= 2
+}
+
+function requireTeacher(req, res, next) {
+  if (req.user?.user_type !== 'teacher') {
+    return res.status(403).json({ error: '仅教师用户可执行该操作' })
+  }
+  next()
 }
 
 router.post('/register', (req, res) => {
@@ -150,6 +163,8 @@ router.get('/grammar', authMiddleware, (req, res) => {
     limit: parseLimit(req.query.limit, 50, 500),
     offset: parseOffset(req.query.offset),
     keyword: req.query.q || req.query.keyword || '',
+    userId: req.user.id,
+    favoritesOnly: parseFlag(req.query.favoritesOnly || req.query.favorites_only),
     textbookId: req.query.textbookId,
     lessonId: req.query.lessonId,
     lessonNumberMin: req.query.lessonNumberMin || req.query.lesson_number_min,
@@ -165,6 +180,55 @@ router.get('/grammar/:id', authMiddleware, (req, res) => {
   res.json(item)
 })
 
+router.post('/grammar/:id/favorite', authMiddleware, (req, res) => {
+  const item = Grammar.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '文法条目不存在' })
+  Grammar.setFavorite(req.user.id, req.params.id, true)
+  res.json({ success: true, isFavorite: true })
+})
+
+router.delete('/grammar/:id/favorite', authMiddleware, (req, res) => {
+  const item = Grammar.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '文法条目不存在' })
+  Grammar.setFavorite(req.user.id, req.params.id, false)
+  res.json({ success: true, isFavorite: false })
+})
+
+router.get('/vocabulary/options', authMiddleware, (req, res) => {
+  res.json(Vocabulary.options())
+})
+
+router.get('/vocabulary', authMiddleware, (req, res) => {
+  res.json(Vocabulary.list({
+    limit: parseLimit(req.query.limit, 50, 500),
+    offset: parseOffset(req.query.offset),
+    keyword: req.query.q || req.query.keyword || '',
+    userId: req.user.id,
+    favoritesOnly: parseFlag(req.query.favoritesOnly || req.query.favorites_only),
+    textbookId: req.query.textbookId,
+    lessonId: req.query.lessonId,
+    lessonNumberMin: req.query.lessonNumberMin || req.query.lesson_number_min,
+    lessonNumberMax: req.query.lessonNumberMax || req.query.lesson_number_max,
+    unitId: req.query.unitId,
+    tableType: req.query.tableType || 'all',
+    idOrder: req.query.id_order || req.query.idOrder || 'asc'
+  }))
+})
+
+router.post('/vocabulary/:id/favorite', authMiddleware, (req, res) => {
+  const item = Vocabulary.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '词条不存在' })
+  Vocabulary.setFavorite(req.user.id, req.params.id, true)
+  res.json({ success: true, isFavorite: true })
+})
+
+router.delete('/vocabulary/:id/favorite', authMiddleware, (req, res) => {
+  const item = Vocabulary.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '词条不存在' })
+  Vocabulary.setFavorite(req.user.id, req.params.id, false)
+  res.json({ success: true, isFavorite: false })
+})
+
 router.get('/texts/options', authMiddleware, (req, res) => {
   res.json(Text.options())
 })
@@ -178,8 +242,124 @@ router.get('/texts', authMiddleware, (req, res) => {
   }))
 })
 
-router.get('/reading-materials', authMiddleware, (req, res) => {
+router.get('/classes', authMiddleware, (req, res) => {
+  res.json(Classroom.listForUser({
+    userId: req.user.id,
+    limit: parseLimit(req.query.limit, 50, 500),
+    offset: parseOffset(req.query.offset)
+  }))
+})
+
+router.post('/classes', authMiddleware, requireTeacher, (req, res) => {
+  try {
+    const item = Classroom.create({
+      teacherUserId: req.user.id,
+      name: req.body.name
+    })
+    res.status(201).json({ success: true, item })
+  } catch (error) {
+    if (String(error?.message || '').includes('班级名不能为空')) {
+      return res.status(400).json({ error: '请输入班级名' })
+    }
+    console.error(error)
+    return res.status(500).json({ error: '创建班级失败' })
+  }
+})
+
+router.post('/classes/join', authMiddleware, (req, res) => {
+  try {
+    const item = Classroom.joinByCode({
+      userId: req.user.id,
+      userType: req.user.user_type,
+      code: req.body.code
+    })
+    res.status(201).json({ success: true, item })
+  } catch (error) {
+    if (error.code === 'CLASS_NOT_FOUND') {
+      return res.status(404).json({ error: '班级码不存在' })
+    }
+    if (error.code === 'CLASS_ALREADY_JOINED') {
+      return res.status(409).json({ error: '您已加入该班级' })
+    }
+    if (error.code === 'CLASS_SELF_JOIN') {
+      return res.status(400).json({ error: '不能加入自己创建的班级' })
+    }
+    if (String(error?.message || '').includes('班级码不能为空')) {
+      return res.status(400).json({ error: '请输入班级码' })
+    }
+    console.error(error)
+    return res.status(500).json({ error: '加入班级失败' })
+  }
+})
+
+router.get('/classes/:id', authMiddleware, (req, res) => {
+  const item = Classroom.findForUser(req.params.id, {
+    userId: req.user.id
+  })
+  if (!item) return res.status(404).json({ error: '班级不存在或无权访问' })
+  res.json(item)
+})
+
+router.put('/classes/:id', authMiddleware, requireTeacher, (req, res) => {
+  const item = Classroom.findForUser(req.params.id, { userId: req.user.id })
+  if (!item) return res.status(404).json({ error: '班级不存在或无权访问' })
+  if (!item.is_creator) return res.status(403).json({ error: '仅创建者可修改班级名称' })
+
+  try {
+    const result = Classroom.updateName({
+      classId: req.params.id,
+      teacherUserId: req.user.id,
+      name: req.body.name
+    })
+    if (!result.changes) return res.status(404).json({ error: '班级不存在或无权访问' })
+    res.json({ success: true })
+  } catch (error) {
+    if (String(error?.message || '').includes('班级名不能为空')) {
+      return res.status(400).json({ error: '请输入班级名' })
+    }
+    console.error(error)
+    return res.status(500).json({ error: '修改班级名称失败' })
+  }
+})
+
+router.delete('/classes/:id/members/:userId', authMiddleware, requireTeacher, (req, res) => {
+  const item = Classroom.findForUser(req.params.id, { userId: req.user.id })
+  if (!item) return res.status(404).json({ error: '班级不存在或无权访问' })
+  if (!item.is_creator) return res.status(403).json({ error: '仅创建者可移除学生' })
+
+  const result = Classroom.removeStudent({
+    classId: req.params.id,
+    teacherUserId: req.user.id,
+    studentUserId: req.params.userId
+  })
+
+  if (!result.changes) {
+    if (result.reason === 'not-student') return res.status(400).json({ error: '只能移除学生成员' })
+    return res.status(404).json({ error: '学生成员不存在' })
+  }
+
+  res.json({ success: true })
+})
+
+router.delete('/classes/:id', authMiddleware, requireTeacher, (req, res) => {
+  const item = Classroom.findForUser(req.params.id, { userId: req.user.id })
+  if (!item) return res.status(404).json({ error: '班级不存在或无权访问' })
+  if (!item.is_creator) return res.status(403).json({ error: '仅创建者可解散班级' })
+
+  const result = Classroom.dissolve({
+    classId: req.params.id,
+    teacherUserId: req.user.id
+  })
+  if (!result.changes) return res.status(404).json({ error: '班级不存在或无权访问' })
+  res.json({ success: true })
+})
+
+router.get('/classes/:id/materials', authMiddleware, (req, res) => {
+  const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
+  if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
+
   const result = ReadingMaterial.list({
+    classId: req.params.id,
     limit: parseLimit(req.query.limit, 50, 500),
     offset: parseOffset(req.query.offset),
     keyword: req.query.keyword || '',
@@ -189,35 +369,110 @@ router.get('/reading-materials', authMiddleware, (req, res) => {
   res.json({
     rows: result.rows.map((row) => publicReadingMaterial({
       ...row,
-      view_url: row.can_view ? `${baseUrl}/api/user/reading-materials/open?token=${ReadingMaterial.issueAccessToken(row.id)}` : null
+      view_url: row.can_view ? `${baseUrl}/api/user/classes/${req.params.id}/materials/open?token=${ReadingMaterial.issueAccessToken(row.id)}` : null
     })),
-    total: result.total
+    total: result.total,
+    canManage: Classroom.canManageMaterials(req.params.id, { userId: req.user.id })
   })
 })
 
-router.get('/reading-materials/open', (req, res) => {
+router.post(
+  '/classes/:id/materials/upload',
+  authMiddleware,
+  requireTeacher,
+  express.raw({ type: '*/*', limit: '200mb' }),
+  (req, res) => {
+    const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
+    if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
+    if (!Classroom.canManageMaterials(req.params.id, { userId: req.user.id })) {
+      return res.status(403).json({ error: '仅班级内教师可上传课程资料' })
+    }
+
+    try {
+      const originalFilename = decodeURIComponent(String(req.get('x-file-name') || ''))
+      const title = decodeURIComponent(String(req.get('x-title') || ''))
+      const id = ReadingMaterial.create({
+        classId: req.params.id,
+        title,
+        originalFilename,
+        buffer: req.body,
+        createdBy: req.user.id
+      })
+      res.status(201).json({ id })
+    } catch (error) {
+      return res.status(400).json({ error: error.message || '上传失败' })
+    }
+  }
+)
+
+router.get('/classes/:id/materials/open', (req, res) => {
   const payload = ReadingMaterial.resolveAccessToken(req.query.token)
   if (!payload) return res.status(401).json({ error: '查看链接已失效' })
 
   const item = ReadingMaterial.findById(payload.id)
-  if (!item) return res.status(404).json({ error: '阅读材料不存在' })
+  if (!item || Number(item.class_id) !== Number(req.params.id)) {
+    return res.status(404).json({ error: '课程资料不存在' })
+  }
   return streamReadingMaterial(res, item, { view: true })
 })
 
-router.get('/reading-materials/:id/open-link', authMiddleware, (req, res) => {
-  const item = ReadingMaterial.findById(req.params.id)
-  if (!item) return res.status(404).json({ error: '阅读材料不存在' })
+router.get('/classes/:id/materials/:materialId/open-link', authMiddleware, (req, res) => {
+  const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
+  if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
+
+  const item = ReadingMaterial.findById(req.params.materialId)
+  if (!item || Number(item.class_id) !== Number(req.params.id)) {
+    return res.status(404).json({ error: '课程资料不存在' })
+  }
   if (!ReadingMaterial.canView(item)) return res.status(400).json({ error: '该文件暂不可在线查看，请下载后打开' })
 
   const token = ReadingMaterial.issueAccessToken(item.id)
   const baseUrl = `${req.protocol}://${req.get('host')}`
-  res.json({ url: `${baseUrl}/api/user/reading-materials/open?token=${token}` })
+  res.json({ url: `${baseUrl}/api/user/classes/${req.params.id}/materials/open?token=${token}` })
 })
 
-router.get('/reading-materials/:id/content', authMiddleware, (req, res) => {
-  const item = ReadingMaterial.findById(req.params.id)
-  if (!item) return res.status(404).json({ error: '阅读材料不存在' })
+router.get('/classes/:id/materials/:materialId/content', authMiddleware, (req, res) => {
+  const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
+  if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
+
+  const item = ReadingMaterial.findById(req.params.materialId)
+  if (!item || Number(item.class_id) !== Number(req.params.id)) {
+    return res.status(404).json({ error: '课程资料不存在' })
+  }
   return streamReadingMaterial(res, item)
+})
+
+router.put('/classes/:id/materials/:materialId', authMiddleware, requireTeacher, (req, res) => {
+  const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
+  if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
+  if (!Classroom.canManageMaterials(req.params.id, { userId: req.user.id })) {
+    return res.status(403).json({ error: '仅班级内教师可编辑课程资料' })
+  }
+
+  const item = ReadingMaterial.findById(req.params.materialId)
+  if (!item || Number(item.class_id) !== Number(req.params.id)) {
+    return res.status(404).json({ error: '课程资料不存在' })
+  }
+
+  const title = String(req.body.title || '').trim()
+  if (!title) return res.status(400).json({ error: '标题不能为空' })
+  ReadingMaterial.update(req.params.materialId, { title })
+  res.json({ success: true })
+})
+
+router.delete('/classes/:id/materials/:materialId', authMiddleware, requireTeacher, (req, res) => {
+  const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
+  if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
+  if (!Classroom.canManageMaterials(req.params.id, { userId: req.user.id })) {
+    return res.status(403).json({ error: '仅班级内教师可删除课程资料' })
+  }
+
+  const item = ReadingMaterial.findById(req.params.materialId)
+  if (!item || Number(item.class_id) !== Number(req.params.id)) {
+    return res.status(404).json({ error: '课程资料不存在' })
+  }
+  ReadingMaterial.delete(req.params.materialId)
+  res.json({ success: true })
 })
 
 module.exports = router

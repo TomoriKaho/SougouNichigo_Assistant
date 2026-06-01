@@ -38,6 +38,10 @@ function parseOffset(value) {
   return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0
 }
 
+function parseFlag(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase())
+}
+
 function handleDbError(res, error, fallback = '操作失败') {
   if (String(error?.message || '').includes('UNIQUE constraint failed')) {
     return res.status(409).json({ error: '存在重复数据，请检查用户名、邮箱或唯一字段' })
@@ -317,12 +321,30 @@ router.get('/vocabulary', requireAdmin, (req, res) => {
     limit: parseLimit(req.query.limit, 50, 500),
     offset: parseOffset(req.query.offset),
     keyword: req.query.q || req.query.keyword || '',
+    userId: req.admin.id,
+    favoritesOnly: parseFlag(req.query.favoritesOnly || req.query.favorites_only),
     textbookId: req.query.textbookId,
     lessonId: req.query.lessonId,
+    lessonNumberMin: req.query.lessonNumberMin || req.query.lesson_number_min,
+    lessonNumberMax: req.query.lessonNumberMax || req.query.lesson_number_max,
     unitId: req.query.unitId,
     tableType: req.query.tableType || 'all',
     idOrder: req.query.id_order || req.query.idOrder || 'asc'
   }))
+})
+
+router.post('/vocabulary/:id/favorite', requireAdmin, (req, res) => {
+  const item = Vocabulary.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '词条不存在' })
+  Vocabulary.setFavorite(req.admin.id, req.params.id, true)
+  res.json({ success: true, isFavorite: true })
+})
+
+router.delete('/vocabulary/:id/favorite', requireAdmin, (req, res) => {
+  const item = Vocabulary.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '词条不存在' })
+  Vocabulary.setFavorite(req.admin.id, req.params.id, false)
+  res.json({ success: true, isFavorite: false })
 })
 
 router.post('/vocabulary', requireAdmin, (req, res) => {
@@ -365,7 +387,11 @@ router.put('/vocabulary/:id', requireAdmin, (req, res) => {
     supplement: req.body.supplement,
     accent: req.body.accent,
     part_of_speech: req.body.part_of_speech,
-    explanation: req.body.explanation
+    explanation: req.body.explanation,
+    is_proper_noun: req.body.is_proper_noun,
+    is_onomatopoeia: req.body.is_onomatopoeia,
+    is_loanword: req.body.is_loanword,
+    has_kanji: req.body.has_kanji
   })
   res.json({ success: true })
 })
@@ -386,6 +412,8 @@ router.get('/grammar', requireAdmin, (req, res) => {
     limit: parseLimit(req.query.limit, 50, 500),
     offset: parseOffset(req.query.offset),
     keyword: req.query.q || req.query.keyword || '',
+    userId: req.admin.id,
+    favoritesOnly: parseFlag(req.query.favoritesOnly || req.query.favorites_only),
     textbookId: req.query.textbookId,
     lessonId: req.query.lessonId,
     lessonNumberMin: req.query.lessonNumberMin || req.query.lesson_number_min,
@@ -393,6 +421,20 @@ router.get('/grammar', requireAdmin, (req, res) => {
     unitId: req.query.unitId,
     idOrder: req.query.id_order || req.query.idOrder || 'asc'
   }))
+})
+
+router.post('/grammar/:id/favorite', requireAdmin, (req, res) => {
+  const item = Grammar.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '文法条目不存在' })
+  Grammar.setFavorite(req.admin.id, req.params.id, true)
+  res.json({ success: true, isFavorite: true })
+})
+
+router.delete('/grammar/:id/favorite', requireAdmin, (req, res) => {
+  const item = Grammar.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '文法条目不存在' })
+  Grammar.setFavorite(req.admin.id, req.params.id, false)
+  res.json({ success: true, isFavorite: false })
 })
 
 router.post('/grammar', requireAdmin, (req, res) => {

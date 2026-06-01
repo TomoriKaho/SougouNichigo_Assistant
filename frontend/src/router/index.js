@@ -7,9 +7,10 @@ import Vocabulary from '../views/Vocabulary.vue';
 import Grammar from '../views/Grammar.vue';
 import GrammarStudy from '../views/GrammarStudy.vue';
 import CourseStudy from '../views/CourseStudy.vue';
+import WordStudy from '../views/WordStudy.vue';
+import Classes from '../views/Classes.vue';
+import ClassDetail from '../views/ClassDetail.vue';
 import Texts from '../views/Texts.vue';
-import ReadingMaterials from '../views/ReadingMaterials.vue';
-import ReadingMaterialsManagement from '../views/ReadingMaterialsManagement.vue';
 import Feedback from '../views/Feedback.vue';
 import DatabaseManagement from '../views/DatabaseManagement.vue';
 import Login from '../views/Login.vue';
@@ -29,15 +30,15 @@ const routes = [
     children: [
       { path: '', name: 'Dashboard', component: Dashboard },
       { path: 'course-study', name: 'CourseStudy', component: CourseStudy, meta: { title: '课程学习', requiresUser: true } },
-      { path: 'word-study', name: 'WordStudy', component: UserPlaceholder, meta: { title: '单词学习', requiresUser: true } },
+      { path: 'word-study', name: 'WordStudy', component: WordStudy, meta: { title: '单词学习', requiresUser: true } },
       { path: 'grammar-study', name: 'GrammarStudy', component: GrammarStudy, meta: { title: '文法学习', requiresUser: true } },
+      { path: 'classes', name: 'Classes', component: Classes, meta: { title: '班级', requiresUser: true } },
+      { path: 'classes/:id', name: 'ClassDetail', component: ClassDetail, meta: { title: '班级详情', requiresUser: true } },
       { path: 'translation-practice', name: 'TranslationPractice', component: UserPlaceholder, meta: { title: '翻译练习', requiresUser: true } },
-      { path: 'reading-materials', name: 'ReadingMaterials', component: ReadingMaterials, meta: { title: '阅读材料', requiresUser: true } },
       { path: 'users', name: 'Users', component: Users, meta: { requiresPrivileged: true } },
       { path: 'vocabulary', name: 'Vocabulary', component: Vocabulary, meta: { requiresPrivileged: true } },
       { path: 'grammar', name: 'Grammar', component: Grammar, meta: { requiresPrivileged: true } },
       { path: 'texts', name: 'Texts', component: Texts, meta: { requiresPrivileged: true } },
-      { path: 'reading-materials-management', name: 'ReadingMaterialsManagement', component: ReadingMaterialsManagement, meta: { requiresPrivileged: true } },
       { path: 'feedback', name: 'Feedback', component: Feedback, meta: { requiresPrivileged: true } },
       { path: 'database', name: 'DatabaseManagement', component: DatabaseManagement, meta: { requiresPrivileged: true, requiresDev: true } }
     ]

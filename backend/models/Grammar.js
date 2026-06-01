@@ -32,6 +32,7 @@ function mapEntry(row) {
   if (!row) return null
   return {
     ...row,
+    is_favorite: !!row.is_favorite,
     examples: parseExamples(row.examples_json)
   }
 }
@@ -80,6 +81,9 @@ class Grammar {
     const offset = Number(filters.offset || 0)
     const clauses = []
     const params = []
+    const joinParams = []
+    const userId = Number(filters.userId || 0)
+    const useFavoriteJoin = userId > 0
 
     if (filters.textbookId) {
       clauses.push('g.textbook_id = ?')
@@ -112,8 +116,20 @@ class Grammar {
       params.push(`%${keyword}%`)
     }
 
+    if (useFavoriteJoin && filters.favoritesOnly) {
+      clauses.push('gf.id IS NOT NULL')
+    }
+
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
     const order = String(filters.idOrder || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC'
+    const favoriteJoin = useFavoriteJoin
+      ? 'LEFT JOIN grammar_favorites gf ON gf.grammar_id = g.id AND gf.user_id = ?'
+      : ''
+    const favoriteSelect = useFavoriteJoin
+      ? 'CASE WHEN gf.id IS NULL THEN 0 ELSE 1 END AS is_favorite,'
+      : '0 AS is_favorite,'
+
+    if (useFavoriteJoin) joinParams.push(userId)
 
     const rows = grammarDb.prepare(`
       SELECT
@@ -124,28 +140,34 @@ class Grammar {
         g.grammar,
         g.brief_logic,
         g.order_index,
+        ${favoriteSelect}
         t.name AS textbook_name,
         l.lesson_number,
         l.title AS lesson_title,
         u.unit_number,
         u.name AS unit_name
       FROM grammar_entries g
+      ${favoriteJoin}
       JOIN textbooks t ON t.id = g.textbook_id
       JOIN lessons l ON l.id = g.lesson_id
       JOIN units u ON u.id = g.unit_id
       ${where}
       ORDER BY CAST(g.id AS INTEGER) ${order}
       LIMIT ? OFFSET ?
-    `).all(...params, limit, offset)
+    `).all(...joinParams, ...params, limit, offset).map((row) => ({
+      ...row,
+      is_favorite: !!row.is_favorite
+    }))
 
     const total = grammarDb.prepare(`
       SELECT COUNT(*) AS total
       FROM grammar_entries g
+      ${favoriteJoin}
       JOIN textbooks t ON t.id = g.textbook_id
       JOIN lessons l ON l.id = g.lesson_id
       JOIN units u ON u.id = g.unit_id
       ${where}
-    `).get(...params).total
+    `).get(...joinParams, ...params).total
 
     return { rows, total }
   }
@@ -239,6 +261,21 @@ class Grammar {
 
   static delete(id) {
     return grammarDb.prepare('DELETE FROM grammar_entries WHERE id = ?').run(id)
+  }
+
+  static setFavorite(userId, grammarId, favorite = true) {
+    if (favorite) {
+      grammarDb.prepare(`
+        INSERT OR IGNORE INTO grammar_favorites (user_id, grammar_id)
+        VALUES (?, ?)
+      `).run(Number(userId), Number(grammarId))
+      return
+    }
+
+    grammarDb.prepare(`
+      DELETE FROM grammar_favorites
+      WHERE user_id = ? AND grammar_id = ?
+    `).run(Number(userId), Number(grammarId))
   }
 
   static counts() {

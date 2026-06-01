@@ -37,10 +37,18 @@
           <tbody>
             <tr v-for="item in rows" :key="item.id">
               <td>
-                <span class="course-study-index-text">第{{ item.lesson_number || '-' }}课</span>
+                <span class="course-study-index-text">
+                  <span>第</span>
+                  <span class="course-study-index-number">{{ item.lesson_number || '-' }}</span>
+                  <span>课</span>
+                </span>
               </td>
               <td>
-                <span class="course-study-index-text">第{{ item.unit_number || '-' }}单元</span>
+                <span class="course-study-index-text">
+                  <span>第</span>
+                  <span class="course-study-index-number">{{ item.unit_number || '-' }}</span>
+                  <span>单元</span>
+                </span>
               </td>
               <td>
                 <span class="text-entry-title course-study-title" :title="item.title">{{ item.title }}</span>

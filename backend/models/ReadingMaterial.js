@@ -214,6 +214,11 @@ class ReadingMaterial {
     const clauses = []
     const params = []
 
+    if (filters.classId !== undefined && filters.classId !== null && filters.classId !== '') {
+      clauses.push('class_id = ?')
+      params.push(Number(filters.classId))
+    }
+
     const keyword = String(filters.keyword || '').trim().toLowerCase()
     if (keyword) {
       clauses.push("(lower(title) LIKE ? OR lower(original_filename) LIKE ?)")
@@ -224,7 +229,7 @@ class ReadingMaterial {
     const order = String(filters.idOrder || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC'
 
     const rows = readingMaterialsDb.prepare(`
-      SELECT id, title, original_filename, stored_filename, mime_type, file_category, preview_file_path, conversion_status, conversion_error, converted_at, file_size, content_hash, created_by, created_at, updated_at
+      SELECT id, class_id, title, original_filename, stored_filename, mime_type, file_category, preview_file_path, conversion_status, conversion_error, converted_at, file_size, content_hash, created_by, created_at, updated_at
       FROM reading_materials
       ${where}
       ORDER BY id ${order}
@@ -242,7 +247,7 @@ class ReadingMaterial {
 
   static findById(id) {
     return publicRow(readingMaterialsDb.prepare(`
-      SELECT id, title, original_filename, stored_filename, file_path, mime_type, file_category, preview_file_path, conversion_status, conversion_error, converted_at, file_size, content_hash, created_by, created_at, updated_at
+      SELECT id, class_id, title, original_filename, stored_filename, file_path, mime_type, file_category, preview_file_path, conversion_status, conversion_error, converted_at, file_size, content_hash, created_by, created_at, updated_at
       FROM reading_materials
       WHERE id = ?
     `).get(id))
@@ -253,7 +258,7 @@ class ReadingMaterial {
     return path.join(dataDir, row.file_path)
   }
 
-  static create({ title, originalFilename, buffer, createdBy }) {
+  static create({ classId, title, originalFilename, buffer, createdBy }) {
     const definition = this.validateUpload({ originalFilename, buffer })
     const original = definition.filename
     const stored = storedFilenameFor(original)
@@ -269,6 +274,7 @@ class ReadingMaterial {
 
     const result = readingMaterialsDb.prepare(`
       INSERT INTO reading_materials (
+        class_id,
         title,
         original_filename,
         stored_filename,
@@ -285,8 +291,9 @@ class ReadingMaterial {
         created_at,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
     `).run(
+      Number(classId),
       resolvedTitle,
       original,
       stored,
