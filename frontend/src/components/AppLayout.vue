@@ -47,25 +47,35 @@
           <button class="ghost" @click="handleLogout">退出</button>
         </div>
       </header>
-      <main class="content">
+      <main ref="contentRef" class="content">
         <router-view />
         <div
           v-if="showAssistantOrb"
           class="assistant-widget"
-          :class="{ 'is-open': assistantOpen }"
-          @mouseenter="assistantHover = true"
-          @mouseleave="assistantHover = false"
         >
           <div v-if="assistantHover && !assistantOpen" class="assistant-hint-bubble" aria-hidden="true">
             点我就可以开始提问啦～
           </div>
 
-          <div v-if="assistantOpen" class="assistant-chat-panel" role="dialog" aria-label="AI 助手">
-            <div class="assistant-chat-header">
+          <div
+            v-if="assistantOpen"
+            class="assistant-chat-panel"
+            role="dialog"
+            aria-label="AI 助手"
+            :style="assistantPanelStyle"
+          >
+            <div
+              v-for="direction in assistantResizeDirections"
+              :key="direction"
+              class="assistant-resize-handle"
+              :class="`assistant-resize-${direction}`"
+              @pointerdown.stop.prevent="startAssistantResize(direction, $event)"
+            ></div>
+            <div class="assistant-chat-header" @pointerdown.stop.prevent="startAssistantDrag">
               <div class="assistant-chat-title-group">
                 <img class="assistant-chat-avatar" :src="assistantCurrentImage" alt="" />
                 <div>
-                  <h3>AI 助手</h3>
+                  <h3>あーちゃん</h3>
                   <p>{{ assistantStatusText }}</p>
                 </div>
               </div>
@@ -105,7 +115,14 @@
             </form>
           </div>
 
-          <button class="assistant-orb" type="button" aria-label="打开 AI 助手" @click="openAssistant">
+          <button
+            class="assistant-orb"
+            type="button"
+            aria-label="打开 AI 助手"
+            @mouseenter="assistantHover = true"
+            @mouseleave="assistantHover = false"
+            @click="openAssistant"
+          >
             <img :src="assistantCurrentImage" alt="" />
           </button>
         </div>
@@ -143,7 +160,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import assistantHappyImage from '../assistant/assistant-happy.webp';
 import assistantNormalImage from '../assistant/assistant-normal.webp';
@@ -156,6 +173,7 @@ import { apiRequest, ApiError } from '../utils/apiClient';
 const route = useRoute();
 const router = useRouter();
 const { state, logout, isDev, isPrivileged, isUserMode, isTeacher } = useAuth();
+const contentRef = ref(null);
 const sidebarCollapsed = ref(false);
 const feedbackOpen = ref(false);
 const feedbackSaving = ref(false);
@@ -175,7 +193,7 @@ const assistantMessages = ref([
   {
     id: 1,
     role: 'assistant',
-    content: '你好呀，我已经准备好啦。你可以直接点我提问。',
+    content: '你好呀，我已经准备好啦。你可以直接向我提问。',
     phase: 'done'
   }
 ]);
@@ -183,6 +201,21 @@ let assistantMessageId = 2;
 let assistantThinkingTimer = null;
 let assistantReplyTimer = null;
 let assistantSleepTimer = null;
+const assistantResizeDirections = ['n', 'e', 's', 'w', 'ne', 'nw', 'se', 'sw'];
+const assistantDefaultPanelSize = { width: 380, height: 520 };
+const assistantPanelPosition = reactive({ left: 0, top: 0 });
+const assistantPanelSize = reactive({ width: assistantDefaultPanelSize.width, height: assistantDefaultPanelSize.height });
+const assistantPanelReady = ref(false);
+const assistantInteraction = reactive({
+  mode: '',
+  direction: '',
+  startX: 0,
+  startY: 0,
+  startLeft: 0,
+  startTop: 0,
+  startWidth: 0,
+  startHeight: 0
+});
 const assistantReplySamples = [
   '这个问题我已经记下来了。当前回复还是占位内容，后面可以把它接到真正的 AI 服务上，再根据你的学习页面上下文给出更贴切的回答。',
   '我现在先用一段模拟回复和你对话。等后续接入真实模型后，这里可以继续扩展成结合词库、文法、课程资料和班级内容的智能问答。',
@@ -243,8 +276,14 @@ const assistantStatusText = computed(() => {
   if (assistantState.value === 'thinking') return '正在思考中';
   if (assistantState.value === 'replying') return '正在回复中';
   if (assistantSleepy.value) return '我先休息一下';
-  return '点我就可以开始提问';
+  return '你的智能日语学习助手';
 });
+const assistantPanelStyle = computed(() => ({
+  left: `${assistantPanelPosition.left}px`,
+  top: `${assistantPanelPosition.top}px`,
+  width: `${assistantPanelSize.width}px`,
+  height: `${assistantPanelSize.height}px`
+}));
 
 function showToast(message, type = 'info') {
   toast.message = message;
@@ -271,6 +310,48 @@ function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value;
 }
 
+function assistantContentMetrics() {
+  const width = contentRef.value?.clientWidth || window.innerWidth;
+  const height = contentRef.value?.clientHeight || window.innerHeight;
+  return { width, height };
+}
+
+function clampAssistantPanel() {
+  const margin = 12;
+  const metrics = assistantContentMetrics();
+  const maxWidth = Math.max(320, metrics.width - margin * 2);
+  const maxHeight = Math.max(360, metrics.height - margin * 2);
+
+  assistantPanelSize.width = Math.min(Math.max(assistantPanelSize.width, 320), maxWidth);
+  assistantPanelSize.height = Math.min(Math.max(assistantPanelSize.height, 360), maxHeight);
+
+  const maxLeft = Math.max(margin, metrics.width - assistantPanelSize.width - margin);
+  const maxTop = Math.max(margin, metrics.height - assistantPanelSize.height - margin);
+  assistantPanelPosition.left = Math.min(Math.max(assistantPanelPosition.left, margin), maxLeft);
+  assistantPanelPosition.top = Math.min(Math.max(assistantPanelPosition.top, margin), maxTop);
+}
+
+function ensureAssistantPanelPosition() {
+  if (assistantPanelReady.value) {
+    clampAssistantPanel();
+    return;
+  }
+
+  const metrics = assistantContentMetrics();
+  assistantPanelPosition.left = Math.max(12, metrics.width - assistantPanelSize.width - 34);
+  assistantPanelPosition.top = Math.max(12, metrics.height - assistantPanelSize.height - 128);
+  assistantPanelReady.value = true;
+  clampAssistantPanel();
+}
+
+function resetAssistantPanelState() {
+  assistantPanelReady.value = false;
+  assistantPanelPosition.left = 0;
+  assistantPanelPosition.top = 0;
+  assistantPanelSize.width = assistantDefaultPanelSize.width;
+  assistantPanelSize.height = assistantDefaultPanelSize.height;
+}
+
 function clearAssistantSleepTimer() {
   if (assistantSleepTimer) {
     clearTimeout(assistantSleepTimer);
@@ -289,7 +370,7 @@ function scheduleAssistantSleep() {
       return;
     }
     scheduleAssistantSleep();
-  }, 120000);
+  }, 180000);
 }
 
 function clearAssistantTimers() {
@@ -305,11 +386,136 @@ function clearAssistantTimers() {
 }
 
 function openAssistant() {
+  ensureAssistantPanelPosition();
   assistantOpen.value = true;
 }
 
 function closeAssistant() {
   assistantOpen.value = false;
+  stopAssistantInteraction();
+  resetAssistantPanelState();
+}
+
+function beginAssistantInteraction(mode, direction, event) {
+  ensureAssistantPanelPosition();
+  assistantInteraction.mode = mode;
+  assistantInteraction.direction = direction;
+  assistantInteraction.startX = event.clientX;
+  assistantInteraction.startY = event.clientY;
+  assistantInteraction.startLeft = assistantPanelPosition.left;
+  assistantInteraction.startTop = assistantPanelPosition.top;
+  assistantInteraction.startWidth = assistantPanelSize.width;
+  assistantInteraction.startHeight = assistantPanelSize.height;
+
+  window.addEventListener('pointermove', handleAssistantPointerMove);
+  window.addEventListener('pointerup', stopAssistantInteraction);
+}
+
+function startAssistantDrag(event) {
+  beginAssistantInteraction('drag', '', event);
+}
+
+function startAssistantResize(direction, event) {
+  beginAssistantInteraction('resize', direction, event);
+}
+
+function handleAssistantPointerMove(event) {
+  if (!assistantInteraction.mode) return;
+
+  const dx = event.clientX - assistantInteraction.startX;
+  const dy = event.clientY - assistantInteraction.startY;
+
+  if (assistantInteraction.mode === 'drag') {
+    assistantPanelPosition.left = assistantInteraction.startLeft + dx;
+    assistantPanelPosition.top = assistantInteraction.startTop + dy;
+    clampAssistantPanel();
+    return;
+  }
+
+  const direction = assistantInteraction.direction;
+  const margin = 12;
+  const metrics = assistantContentMetrics();
+  const minWidth = 320;
+  const minHeight = 360;
+
+  let nextLeft = assistantInteraction.startLeft;
+  let nextTop = assistantInteraction.startTop;
+  let nextWidth = assistantInteraction.startWidth;
+  let nextHeight = assistantInteraction.startHeight;
+
+  if (direction.includes('e')) {
+    nextWidth = assistantInteraction.startWidth + dx;
+  }
+  if (direction.includes('s')) {
+    nextHeight = assistantInteraction.startHeight + dy;
+  }
+  if (direction.includes('w')) {
+    nextWidth = assistantInteraction.startWidth - dx;
+    nextLeft = assistantInteraction.startLeft + dx;
+  }
+  if (direction.includes('n')) {
+    nextHeight = assistantInteraction.startHeight - dy;
+    nextTop = assistantInteraction.startTop + dy;
+  }
+
+  if (nextWidth < minWidth) {
+    if (direction.includes('w')) {
+      nextLeft -= minWidth - nextWidth;
+    }
+    nextWidth = minWidth;
+  }
+  if (nextHeight < minHeight) {
+    if (direction.includes('n')) {
+      nextTop -= minHeight - nextHeight;
+    }
+    nextHeight = minHeight;
+  }
+
+  const maxWidth = Math.max(minWidth, metrics.width - margin * 2);
+  const maxHeight = Math.max(minHeight, metrics.height - margin * 2);
+  nextWidth = Math.min(nextWidth, maxWidth);
+  nextHeight = Math.min(nextHeight, maxHeight);
+
+  if (nextLeft < margin) {
+    if (direction.includes('w')) {
+      nextWidth -= margin - nextLeft;
+    }
+    nextLeft = margin;
+  }
+  if (nextTop < margin) {
+    if (direction.includes('n')) {
+      nextHeight -= margin - nextTop;
+    }
+    nextTop = margin;
+  }
+
+  if (nextLeft + nextWidth > metrics.width - margin) {
+    if (direction.includes('e')) {
+      nextWidth = metrics.width - margin - nextLeft;
+    } else {
+      nextLeft = metrics.width - margin - nextWidth;
+    }
+  }
+  if (nextTop + nextHeight > metrics.height - margin) {
+    if (direction.includes('s')) {
+      nextHeight = metrics.height - margin - nextTop;
+    } else {
+      nextTop = metrics.height - margin - nextHeight;
+    }
+  }
+
+  assistantPanelPosition.left = nextLeft;
+  assistantPanelPosition.top = nextTop;
+  assistantPanelSize.width = Math.max(minWidth, nextWidth);
+  assistantPanelSize.height = Math.max(minHeight, nextHeight);
+  clampAssistantPanel();
+}
+
+function stopAssistantInteraction() {
+  assistantInteraction.mode = '';
+  assistantInteraction.direction = '';
+  window.removeEventListener('pointermove', handleAssistantPointerMove);
+  window.removeEventListener('pointerup', stopAssistantInteraction);
 }
 
 function submitAssistantMessage() {
@@ -396,8 +602,8 @@ function handleLogout() {
   router.push({ name: 'Login' });
 }
 
-onBeforeUnmount(() => {
-  clearAssistantTimers();
+onMounted(() => {
+  window.addEventListener('resize', clampAssistantPanel);
 });
 
 watch(showAssistantOrb, (visible) => {
@@ -425,5 +631,11 @@ watch(assistantBusy, (busy) => {
     return;
   }
   scheduleAssistantSleep();
+});
+
+onBeforeUnmount(() => {
+  clearAssistantTimers();
+  stopAssistantInteraction();
+  window.removeEventListener('resize', clampAssistantPanel);
 });
 </script>
