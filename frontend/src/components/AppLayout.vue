@@ -53,13 +53,19 @@
           v-if="showAssistantOrb"
           class="assistant-widget"
         >
-          <div v-if="assistantHover && !assistantOpen" class="assistant-hint-bubble" aria-hidden="true">
+          <div
+            v-if="assistantHover && !assistantOpen"
+            class="assistant-hint-bubble"
+            :style="assistantHintStyle"
+            aria-hidden="true"
+          >
             点我就可以开始提问啦～
           </div>
 
           <div
             v-if="assistantOpen"
             class="assistant-chat-panel"
+            :class="{ 'assistant-chat-panel-snapback': assistantPanelSnapback }"
             role="dialog"
             aria-label="AI 助手"
             :style="assistantPanelStyle"
@@ -117,11 +123,16 @@
 
           <button
             class="assistant-orb"
+            :class="{ 'assistant-orb-dragging': assistantOrbDragging }"
+            :style="assistantOrbStyle"
             type="button"
             aria-label="打开 AI 助手"
             @mouseenter="assistantHover = true"
             @mouseleave="assistantHover = false"
-            @click="openAssistant"
+            @pointerdown.stop.prevent="startAssistantOrbPress"
+            @pointermove.stop.prevent="handleAssistantOrbPointerMove"
+            @pointerup.stop.prevent="finishAssistantOrbPress"
+            @pointercancel.stop.prevent="cancelAssistantOrbPress"
           >
             <img :src="assistantCurrentImage" alt="" />
           </button>
@@ -160,11 +171,12 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import assistantHappyImage from '../assistant/assistant-happy.webp';
 import assistantNormalImage from '../assistant/assistant-normal.webp';
 import assistantReplyingImage from '../assistant/assistant-replying.webp';
+import assistantSadImage from '../assistant/assistant-sad.webp';
 import assistantSleepyImage from '../assistant/assistant-sleepy.webp';
 import assistantThinkingImage from '../assistant/assistant-thinking.webp';
 import { useAuth } from '../composables/useAuth';
@@ -201,11 +213,29 @@ let assistantMessageId = 2;
 let assistantThinkingTimer = null;
 let assistantReplyTimer = null;
 let assistantSleepTimer = null;
+let assistantOrbPressTimer = null;
+let assistantPanelSnapbackTimer = null;
 const assistantResizeDirections = ['n', 'e', 's', 'w', 'ne', 'nw', 'se', 'sw'];
+const assistantOrbSize = 96;
+const assistantOrbDefaultOffset = { right: 38, bottom: 26 };
 const assistantDefaultPanelSize = { width: 380, height: 520 };
+const assistantOrbPosition = reactive({ left: 0, top: 0 });
+const assistantOrbReady = ref(false);
+const assistantOrbDragging = ref(false);
+const assistantOrbDragged = ref(false);
 const assistantPanelPosition = reactive({ left: 0, top: 0 });
 const assistantPanelSize = reactive({ width: assistantDefaultPanelSize.width, height: assistantDefaultPanelSize.height });
 const assistantPanelReady = ref(false);
+const assistantPanelSnapback = ref(false);
+const assistantOrbInteraction = reactive({
+  pointerId: null,
+  pending: false,
+  suppressOpen: false,
+  startX: 0,
+  startY: 0,
+  startLeft: 0,
+  startTop: 0
+});
 const assistantInteraction = reactive({
   mode: '',
   direction: '',
@@ -266,6 +296,7 @@ const showAssistantOrb = computed(() => Boolean(user.value && isUserMode.value))
 const assistantBusy = computed(() => assistantState.value === 'thinking' || assistantState.value === 'replying');
 const assistantHappyActive = computed(() => !assistantBusy.value && (assistantHover.value || assistantOpen.value));
 const assistantCurrentImage = computed(() => {
+  if (assistantOrbDragging.value) return assistantSadImage;
   if (assistantState.value === 'thinking') return assistantThinkingImage;
   if (assistantState.value === 'replying') return assistantReplyingImage;
   if (assistantSleepy.value) return assistantSleepyImage;
@@ -277,6 +308,20 @@ const assistantStatusText = computed(() => {
   if (assistantState.value === 'replying') return '正在回复中';
   if (assistantSleepy.value) return '我先休息一下';
   return '你的智能日语学习助手';
+});
+const assistantOrbStyle = computed(() => ({
+  left: `${assistantOrbPosition.left}px`,
+  top: `${assistantOrbPosition.top}px`
+}));
+const assistantHintStyle = computed(() => {
+  const contentRect = contentRef.value?.getBoundingClientRect?.();
+  const leftBase = contentRect?.left || 0;
+  const topBase = contentRect?.top || 0;
+
+  return {
+    left: `${leftBase + assistantOrbPosition.left - 72}px`,
+    top: `${topBase + assistantOrbPosition.top - 10}px`
+  };
 });
 const assistantPanelStyle = computed(() => ({
   left: `${assistantPanelPosition.left}px`,
@@ -316,6 +361,54 @@ function assistantContentMetrics() {
   return { width, height };
 }
 
+function assistantDefaultPanelPlacement() {
+  const metrics = assistantContentMetrics();
+  return {
+    left: Math.max(12, metrics.width - assistantDefaultPanelSize.width - 34),
+    top: Math.max(12, metrics.height - assistantDefaultPanelSize.height - 128)
+  };
+}
+
+function assistantPanelPlacementFromOrb() {
+  return {
+    left: assistantOrbPosition.left + assistantOrbSize - assistantDefaultPanelSize.width + 16,
+    top: assistantOrbPosition.top - assistantDefaultPanelSize.height + 18
+  };
+}
+
+function assistantPlacementIsValid(left, top, width, height) {
+  const margin = 12;
+  const metrics = assistantContentMetrics();
+  return (
+    left >= margin &&
+    top >= margin &&
+    left + width <= metrics.width - margin &&
+    top + height <= metrics.height - margin
+  );
+}
+
+function clampAssistantOrb() {
+  const margin = 8;
+  const metrics = assistantContentMetrics();
+  const maxLeft = Math.max(margin, metrics.width - assistantOrbSize - margin);
+  const maxTop = Math.max(margin, metrics.height - assistantOrbSize - margin);
+  assistantOrbPosition.left = Math.min(Math.max(assistantOrbPosition.left, margin), maxLeft);
+  assistantOrbPosition.top = Math.min(Math.max(assistantOrbPosition.top, margin), maxTop);
+}
+
+function ensureAssistantOrbPosition() {
+  if (assistantOrbReady.value) {
+    clampAssistantOrb();
+    return;
+  }
+
+  const metrics = assistantContentMetrics();
+  assistantOrbPosition.left = Math.max(8, metrics.width - assistantOrbSize - assistantOrbDefaultOffset.right);
+  assistantOrbPosition.top = Math.max(8, metrics.height - assistantOrbSize - assistantOrbDefaultOffset.bottom);
+  assistantOrbReady.value = true;
+  clampAssistantOrb();
+}
+
 function clampAssistantPanel() {
   const margin = 12;
   const metrics = assistantContentMetrics();
@@ -337,9 +430,9 @@ function ensureAssistantPanelPosition() {
     return;
   }
 
-  const metrics = assistantContentMetrics();
-  assistantPanelPosition.left = Math.max(12, metrics.width - assistantPanelSize.width - 34);
-  assistantPanelPosition.top = Math.max(12, metrics.height - assistantPanelSize.height - 128);
+  const target = assistantDefaultPanelPlacement();
+  assistantPanelPosition.left = target.left;
+  assistantPanelPosition.top = target.top;
   assistantPanelReady.value = true;
   clampAssistantPanel();
 }
@@ -356,6 +449,20 @@ function clearAssistantSleepTimer() {
   if (assistantSleepTimer) {
     clearTimeout(assistantSleepTimer);
     assistantSleepTimer = null;
+  }
+}
+
+function clearAssistantOrbPressTimer() {
+  if (assistantOrbPressTimer) {
+    clearTimeout(assistantOrbPressTimer);
+    assistantOrbPressTimer = null;
+  }
+}
+
+function clearAssistantPanelSnapbackTimer() {
+  if (assistantPanelSnapbackTimer) {
+    clearTimeout(assistantPanelSnapbackTimer);
+    assistantPanelSnapbackTimer = null;
   }
 }
 
@@ -383,21 +490,56 @@ function clearAssistantTimers() {
     assistantReplyTimer = null;
   }
   clearAssistantSleepTimer();
+  clearAssistantOrbPressTimer();
+  clearAssistantPanelSnapbackTimer();
 }
 
-function openAssistant() {
-  ensureAssistantPanelPosition();
+async function openAssistant() {
+  ensureAssistantOrbPosition();
+  clearAssistantPanelSnapbackTimer();
+  assistantPanelSnapback.value = false;
+  assistantPanelSize.width = assistantDefaultPanelSize.width;
+  assistantPanelSize.height = assistantDefaultPanelSize.height;
+  assistantPanelReady.value = true;
+
+  const desired = assistantOrbDragged.value ? assistantPanelPlacementFromOrb() : assistantDefaultPanelPlacement();
+  assistantPanelPosition.left = desired.left;
+  assistantPanelPosition.top = desired.top;
   assistantOpen.value = true;
+
+  await nextTick();
+
+  if (!assistantOrbDragged.value || assistantPlacementIsValid(desired.left, desired.top, assistantPanelSize.width, assistantPanelSize.height)) {
+    clampAssistantPanel();
+    return;
+  }
+
+  assistantPanelSnapback.value = true;
+  requestAnimationFrame(() => {
+    const fallback = assistantDefaultPanelPlacement();
+    assistantPanelSize.width = assistantDefaultPanelSize.width;
+    assistantPanelSize.height = assistantDefaultPanelSize.height;
+    assistantPanelPosition.left = fallback.left;
+    assistantPanelPosition.top = fallback.top;
+    clampAssistantPanel();
+    assistantPanelSnapbackTimer = setTimeout(() => {
+      assistantPanelSnapback.value = false;
+      assistantPanelSnapbackTimer = null;
+    }, 320);
+  });
 }
 
 function closeAssistant() {
   assistantOpen.value = false;
   stopAssistantInteraction();
+  cancelAssistantOrbPress();
+  assistantPanelSnapback.value = false;
   resetAssistantPanelState();
 }
 
 function beginAssistantInteraction(mode, direction, event) {
   ensureAssistantPanelPosition();
+  assistantPanelSnapback.value = false;
   assistantInteraction.mode = mode;
   assistantInteraction.direction = direction;
   assistantInteraction.startX = event.clientX;
@@ -417,6 +559,84 @@ function startAssistantDrag(event) {
 
 function startAssistantResize(direction, event) {
   beginAssistantInteraction('resize', direction, event);
+}
+
+function startAssistantOrbPress(event) {
+  ensureAssistantOrbPosition();
+  clearAssistantOrbPressTimer();
+  assistantOrbInteraction.pointerId = event.pointerId;
+  assistantOrbInteraction.pending = true;
+  assistantOrbInteraction.suppressOpen = false;
+  assistantOrbInteraction.startX = event.clientX;
+  assistantOrbInteraction.startY = event.clientY;
+  assistantOrbInteraction.startLeft = assistantOrbPosition.left;
+  assistantOrbInteraction.startTop = assistantOrbPosition.top;
+  assistantHover.value = true;
+  event.currentTarget?.setPointerCapture?.(event.pointerId);
+  assistantOrbPressTimer = setTimeout(() => {
+    assistantOrbDragging.value = true;
+    assistantOrbInteraction.pending = false;
+    assistantOrbInteraction.suppressOpen = true;
+    assistantSleepy.value = false;
+    clearAssistantSleepTimer();
+    assistantOrbPressTimer = null;
+  }, 180);
+}
+
+function handleAssistantOrbPointerMove(event) {
+  if (assistantOrbInteraction.pointerId !== event.pointerId) return;
+
+  const dx = event.clientX - assistantOrbInteraction.startX;
+  const dy = event.clientY - assistantOrbInteraction.startY;
+
+  if (assistantOrbDragging.value) {
+    assistantOrbPosition.left = assistantOrbInteraction.startLeft + dx;
+    assistantOrbPosition.top = assistantOrbInteraction.startTop + dy;
+    assistantHover.value = false;
+    assistantOrbDragged.value = true;
+    clampAssistantOrb();
+    return;
+  }
+
+  if (!assistantOrbInteraction.pending) return;
+  if (Math.hypot(dx, dy) > 8) {
+    clearAssistantOrbPressTimer();
+    assistantOrbInteraction.pending = false;
+    assistantOrbInteraction.suppressOpen = true;
+  }
+}
+
+function finishAssistantOrbPress(event) {
+  if (assistantOrbInteraction.pointerId !== event.pointerId) return;
+  event.currentTarget?.releasePointerCapture?.(event.pointerId);
+  clearAssistantOrbPressTimer();
+
+  const shouldOpen = assistantOrbInteraction.pending && !assistantOrbInteraction.suppressOpen && !assistantOrbDragging.value;
+  assistantOrbInteraction.pointerId = null;
+  assistantOrbInteraction.pending = false;
+  assistantOrbInteraction.suppressOpen = false;
+
+  if (assistantOrbDragging.value) {
+    assistantOrbDragging.value = false;
+    assistantHover.value = false;
+    scheduleAssistantSleep();
+    return;
+  }
+
+  if (shouldOpen) {
+    openAssistant();
+  }
+}
+
+function cancelAssistantOrbPress() {
+  clearAssistantOrbPressTimer();
+  assistantOrbInteraction.pointerId = null;
+  assistantOrbInteraction.pending = false;
+  assistantOrbInteraction.suppressOpen = false;
+  if (assistantOrbDragging.value) {
+    assistantOrbDragging.value = false;
+    scheduleAssistantSleep();
+  }
 }
 
 function handleAssistantPointerMove(event) {
@@ -603,7 +823,9 @@ function handleLogout() {
 }
 
 onMounted(() => {
+  ensureAssistantOrbPosition();
   window.addEventListener('resize', clampAssistantPanel);
+  window.addEventListener('resize', clampAssistantOrb);
 });
 
 watch(showAssistantOrb, (visible) => {
@@ -636,6 +858,8 @@ watch(assistantBusy, (busy) => {
 onBeforeUnmount(() => {
   clearAssistantTimers();
   stopAssistantInteraction();
+  cancelAssistantOrbPress();
   window.removeEventListener('resize', clampAssistantPanel);
+  window.removeEventListener('resize', clampAssistantOrb);
 });
 </script>
