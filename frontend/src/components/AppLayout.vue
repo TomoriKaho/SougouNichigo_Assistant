@@ -9,7 +9,6 @@
         <RouterLink v-if="isUserMode" to="/course-study">课程学习</RouterLink>
         <RouterLink v-if="isUserMode" to="/word-study">单词学习</RouterLink>
         <RouterLink v-if="isUserMode" to="/grammar-study">文法学习</RouterLink>
-        <RouterLink v-if="isUserMode" to="/text-study">课文学习</RouterLink>
         <RouterLink v-if="isUserMode" to="/translation-practice">翻译练习</RouterLink>
         <RouterLink v-if="isUserMode" to="/reading-materials">阅读材料</RouterLink>
         <RouterLink v-if="isPrivileged" to="/users">用户管理</RouterLink>
@@ -101,7 +100,6 @@ const titles = {
   CourseStudy: '课程学习',
   WordStudy: '单词学习',
   GrammarStudy: '文法学习',
-  TextStudy: '课文学习',
   TranslationPractice: '翻译练习',
   ReadingMaterials: '阅读材料'
 };

@@ -388,6 +388,8 @@ router.get('/grammar', requireAdmin, (req, res) => {
     keyword: req.query.q || req.query.keyword || '',
     textbookId: req.query.textbookId,
     lessonId: req.query.lessonId,
+    lessonNumberMin: req.query.lessonNumberMin || req.query.lesson_number_min,
+    lessonNumberMax: req.query.lessonNumberMax || req.query.lesson_number_max,
     unitId: req.query.unitId,
     idOrder: req.query.id_order || req.query.idOrder || 'asc'
   }))

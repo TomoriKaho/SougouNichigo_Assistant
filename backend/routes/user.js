@@ -3,6 +3,7 @@ const fs = require('fs')
 const router = express.Router()
 const { User } = require('../models/User')
 const { ReadingMaterial } = require('../models/ReadingMaterial')
+const { Grammar } = require('../models/Grammar')
 const { authMiddleware, signUserToken, USER_JWT_EXPIRES_IN } = require('../middleware/auth')
 
 const USERNAME_PATTERN = /^[A-Za-z0-9]{6,15}$/
@@ -137,6 +138,30 @@ router.post('/login', (req, res) => {
 
 router.get('/me', authMiddleware, (req, res) => {
   res.json({ success: true, user: req.user })
+})
+
+router.get('/grammar/options', authMiddleware, (req, res) => {
+  res.json(Grammar.options())
+})
+
+router.get('/grammar', authMiddleware, (req, res) => {
+  res.json(Grammar.list({
+    limit: parseLimit(req.query.limit, 50, 500),
+    offset: parseOffset(req.query.offset),
+    keyword: req.query.q || req.query.keyword || '',
+    textbookId: req.query.textbookId,
+    lessonId: req.query.lessonId,
+    lessonNumberMin: req.query.lessonNumberMin || req.query.lesson_number_min,
+    lessonNumberMax: req.query.lessonNumberMax || req.query.lesson_number_max,
+    unitId: req.query.unitId,
+    idOrder: req.query.id_order || req.query.idOrder || 'asc'
+  }))
+})
+
+router.get('/grammar/:id', authMiddleware, (req, res) => {
+  const item = Grammar.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '文法条目不存在' })
+  res.json(item)
 })
 
 router.get('/reading-materials', authMiddleware, (req, res) => {

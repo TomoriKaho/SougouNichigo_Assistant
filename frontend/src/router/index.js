@@ -5,6 +5,7 @@ import Dashboard from '../views/Dashboard.vue';
 import Users from '../views/Users.vue';
 import Vocabulary from '../views/Vocabulary.vue';
 import Grammar from '../views/Grammar.vue';
+import GrammarStudy from '../views/GrammarStudy.vue';
 import Texts from '../views/Texts.vue';
 import ReadingMaterials from '../views/ReadingMaterials.vue';
 import ReadingMaterialsManagement from '../views/ReadingMaterialsManagement.vue';
@@ -28,8 +29,7 @@ const routes = [
       { path: '', name: 'Dashboard', component: Dashboard },
       { path: 'course-study', name: 'CourseStudy', component: UserPlaceholder, meta: { title: '课程学习', requiresUser: true } },
       { path: 'word-study', name: 'WordStudy', component: UserPlaceholder, meta: { title: '单词学习', requiresUser: true } },
-      { path: 'grammar-study', name: 'GrammarStudy', component: UserPlaceholder, meta: { title: '文法学习', requiresUser: true } },
-      { path: 'text-study', name: 'TextStudy', component: UserPlaceholder, meta: { title: '课文学习', requiresUser: true } },
+      { path: 'grammar-study', name: 'GrammarStudy', component: GrammarStudy, meta: { title: '文法学习', requiresUser: true } },
       { path: 'translation-practice', name: 'TranslationPractice', component: UserPlaceholder, meta: { title: '翻译练习', requiresUser: true } },
       { path: 'reading-materials', name: 'ReadingMaterials', component: ReadingMaterials, meta: { title: '阅读材料', requiresUser: true } },
       { path: 'users', name: 'Users', component: Users, meta: { requiresPrivileged: true } },

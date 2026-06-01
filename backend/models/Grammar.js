@@ -91,6 +91,16 @@ class Grammar {
       params.push(Number(filters.lessonId))
     }
 
+    if (filters.lessonNumberMin) {
+      clauses.push('l.lesson_number >= ?')
+      params.push(Number(filters.lessonNumberMin))
+    }
+
+    if (filters.lessonNumberMax) {
+      clauses.push('l.lesson_number <= ?')
+      params.push(Number(filters.lessonNumberMax))
+    }
+
     if (filters.unitId) {
       clauses.push('g.unit_id = ?')
       params.push(Number(filters.unitId))
