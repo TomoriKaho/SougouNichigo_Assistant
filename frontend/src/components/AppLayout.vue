@@ -1,10 +1,24 @@
 <template>
-  <div class="layout">
+  <div class="layout" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
     <aside class="sidebar">
       <div class="brand">
-        <span>総日ナビ</span>
+        <span class="brand-title">総日ナビ</span>
+        <button
+          class="sidebar-collapse-button"
+          type="button"
+          :aria-label="sidebarCollapsed ? '展开导航栏' : '收起导航栏'"
+          @click="toggleSidebar"
+        >
+          <span
+            class="sidebar-collapse-icon"
+            :class="{ expanded: !sidebarCollapsed }"
+            aria-hidden="true"
+          >
+            {{ sidebarCollapsed ? '›' : '‹' }}
+          </span>
+        </button>
       </div>
-      <nav>
+      <nav v-show="!sidebarCollapsed">
         <RouterLink to="/" end>首页</RouterLink>
         <RouterLink v-if="isUserMode" to="/course-study">课程学习</RouterLink>
         <RouterLink v-if="isUserMode" to="/word-study">单词学习</RouterLink>
@@ -78,6 +92,7 @@ import { apiRequest, ApiError } from '../utils/apiClient';
 const route = useRoute();
 const router = useRouter();
 const { state, logout, isDev, isPrivileged, isUserMode } = useAuth();
+const sidebarCollapsed = ref(false);
 const feedbackOpen = ref(false);
 const feedbackSaving = ref(false);
 const feedbackError = ref('');
@@ -148,6 +163,10 @@ function openFeedback() {
 function closeFeedback() {
   feedbackOpen.value = false;
   feedbackError.value = '';
+}
+
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value;
 }
 
 async function submitFeedback() {

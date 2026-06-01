@@ -75,6 +75,11 @@ a {
   height: 100vh;
   min-height: 0;
   overflow: hidden;
+  transition: grid-template-columns 0.18s ease;
+}
+
+.layout.sidebar-collapsed {
+  grid-template-columns: 48px minmax(0, 1fr);
 }
 
 .sidebar {
@@ -89,6 +94,7 @@ a {
   overflow: hidden;
   box-shadow: 16px 0 40px rgba(101, 0, 13, 0.12);
   border-right: 1px solid rgba(255, 255, 255, 0.08);
+  transition: padding 0.18s ease, width 0.18s ease;
 }
 
 .sidebar .brand {
@@ -100,9 +106,75 @@ a {
   padding: 22px 16px 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   line-height: 1.25;
+}
+
+.sidebar-collapse-button {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff8ec;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+
+.layout:not(.sidebar-collapsed) .sidebar-collapse-button {
+  margin-right: -12px;
+}
+
+.sidebar-collapse-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #fff8ec;
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;
+  transform: none;
+  transform-origin: center;
+}
+
+.sidebar-collapse-icon.expanded {
+  transform: none;
+}
+
+.sidebar-collapse-button:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.44);
+}
+
+.layout.sidebar-collapsed .sidebar {
+  padding: 0;
+  align-items: center;
+  gap: 0;
+}
+
+.layout.sidebar-collapsed .sidebar .brand {
+  width: 100%;
+  padding: 18px 0;
+  border-bottom: 0;
+  justify-content: center;
+}
+
+.layout.sidebar-collapsed .sidebar .brand-title {
+  display: none;
+}
+
+.layout.sidebar-collapsed .sidebar-collapse-button {
+  width: 32px;
+  height: 32px;
 }
 
 .sidebar nav {
@@ -1620,10 +1692,27 @@ textarea:disabled {
   }
 
   .sidebar .brand {
-    align-items: flex-start;
+    align-items: center;
+    justify-content: space-between;
     text-align: left;
     padding: 4px 12px 10px;
     font-size: 19px;
+  }
+
+  .layout.sidebar-collapsed {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+    height: 100dvh;
+  }
+
+  .layout.sidebar-collapsed .sidebar {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .layout.sidebar-collapsed .sidebar .brand {
+    padding: 14px 0;
   }
 
   .sidebar nav {
