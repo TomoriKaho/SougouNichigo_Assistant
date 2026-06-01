@@ -49,6 +49,66 @@
       </header>
       <main class="content">
         <router-view />
+        <div
+          v-if="showAssistantOrb"
+          class="assistant-widget"
+          :class="{ 'is-open': assistantOpen }"
+          @mouseenter="assistantHover = true"
+          @mouseleave="assistantHover = false"
+        >
+          <div v-if="assistantHover && !assistantOpen" class="assistant-hint-bubble" aria-hidden="true">
+            点我就可以开始提问啦～
+          </div>
+
+          <div v-if="assistantOpen" class="assistant-chat-panel" role="dialog" aria-label="AI 助手">
+            <div class="assistant-chat-header">
+              <div class="assistant-chat-title-group">
+                <img class="assistant-chat-avatar" :src="assistantCurrentImage" alt="" />
+                <div>
+                  <h3>AI 助手</h3>
+                  <p>{{ assistantStatusText }}</p>
+                </div>
+              </div>
+              <button class="ghost assistant-close-button" type="button" @click="closeAssistant">关闭</button>
+            </div>
+
+            <div class="assistant-chat-body">
+              <div
+                v-for="message in assistantMessages"
+                :key="message.id"
+                class="assistant-message"
+                :class="`assistant-message-${message.role}`"
+              >
+                <div class="assistant-message-bubble">
+                  <template v-if="message.role === 'assistant' && message.phase === 'thinking'">
+                    <span class="assistant-thinking-text">思考中...</span>
+                  </template>
+                  <template v-else>
+                    {{ message.content }}
+                  </template>
+                </div>
+              </div>
+            </div>
+
+            <form class="assistant-chat-composer" @submit.prevent="submitAssistantMessage">
+              <textarea
+                v-model.trim="assistantInput"
+                rows="3"
+                :disabled="assistantBusy"
+                placeholder="输入你想问的问题..."
+              ></textarea>
+              <div class="assistant-chat-actions">
+                <button type="submit" :disabled="assistantBusy || !assistantInput.trim()">
+                  {{ assistantBusy ? '处理中...' : '发送' }}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <button class="assistant-orb" type="button" aria-label="打开 AI 助手" @click="openAssistant">
+            <img :src="assistantCurrentImage" alt="" />
+          </button>
+        </div>
       </main>
     </div>
 
@@ -83,8 +143,13 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
+import assistantHappyImage from '../assistant/assistant-happy.webp';
+import assistantNormalImage from '../assistant/assistant-normal.webp';
+import assistantReplyingImage from '../assistant/assistant-replying.webp';
+import assistantSleepyImage from '../assistant/assistant-sleepy.webp';
+import assistantThinkingImage from '../assistant/assistant-thinking.webp';
 import { useAuth } from '../composables/useAuth';
 import { apiRequest, ApiError } from '../utils/apiClient';
 
@@ -101,6 +166,28 @@ const feedbackForm = reactive({
   content: ''
 });
 const toast = reactive({ visible: false, message: '', type: 'info' });
+const assistantHover = ref(false);
+const assistantOpen = ref(false);
+const assistantInput = ref('');
+const assistantState = ref('idle');
+const assistantSleepy = ref(false);
+const assistantMessages = ref([
+  {
+    id: 1,
+    role: 'assistant',
+    content: '你好呀，我已经准备好啦。你可以直接点我提问。',
+    phase: 'done'
+  }
+]);
+let assistantMessageId = 2;
+let assistantThinkingTimer = null;
+let assistantReplyTimer = null;
+let assistantSleepTimer = null;
+const assistantReplySamples = [
+  '这个问题我已经记下来了。当前回复还是占位内容，后面可以把它接到真正的 AI 服务上，再根据你的学习页面上下文给出更贴切的回答。',
+  '我现在先用一段模拟回复和你对话。等后续接入真实模型后，这里可以继续扩展成结合词库、文法、课程资料和班级内容的智能问答。',
+  '这是本地模拟的流式回复效果。后续如果要做正式版本，建议把页面上下文、当前教材和用户身份一起带给模型，这样回答会更有用。'
+];
 
 const titles = {
   Dashboard: '首页',
@@ -142,6 +229,22 @@ const userTypeClass = computed(() => {
   const normalized = String(user.value?.user_type || '').trim().toLowerCase();
   return normalized ? `type-${normalized}` : 'type-unknown';
 });
+const showAssistantOrb = computed(() => Boolean(user.value && isUserMode.value));
+const assistantBusy = computed(() => assistantState.value === 'thinking' || assistantState.value === 'replying');
+const assistantHappyActive = computed(() => !assistantBusy.value && (assistantHover.value || assistantOpen.value));
+const assistantCurrentImage = computed(() => {
+  if (assistantState.value === 'thinking') return assistantThinkingImage;
+  if (assistantState.value === 'replying') return assistantReplyingImage;
+  if (assistantSleepy.value) return assistantSleepyImage;
+  if (assistantHover.value || assistantOpen.value) return assistantHappyImage;
+  return assistantNormalImage;
+});
+const assistantStatusText = computed(() => {
+  if (assistantState.value === 'thinking') return '正在思考中';
+  if (assistantState.value === 'replying') return '正在回复中';
+  if (assistantSleepy.value) return '我先休息一下';
+  return '点我就可以开始提问';
+});
 
 function showToast(message, type = 'info') {
   toast.message = message;
@@ -166,6 +269,90 @@ function closeFeedback() {
 
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value;
+}
+
+function clearAssistantSleepTimer() {
+  if (assistantSleepTimer) {
+    clearTimeout(assistantSleepTimer);
+    assistantSleepTimer = null;
+  }
+}
+
+function scheduleAssistantSleep() {
+  clearAssistantSleepTimer();
+  if (!showAssistantOrb.value || assistantHappyActive.value || assistantBusy.value) return;
+
+  assistantSleepTimer = setTimeout(() => {
+    if (!assistantHappyActive.value && !assistantBusy.value) {
+      assistantSleepy.value = true;
+      assistantSleepTimer = null;
+      return;
+    }
+    scheduleAssistantSleep();
+  }, 120000);
+}
+
+function clearAssistantTimers() {
+  if (assistantThinkingTimer) {
+    clearTimeout(assistantThinkingTimer);
+    assistantThinkingTimer = null;
+  }
+  if (assistantReplyTimer) {
+    clearInterval(assistantReplyTimer);
+    assistantReplyTimer = null;
+  }
+  clearAssistantSleepTimer();
+}
+
+function openAssistant() {
+  assistantOpen.value = true;
+}
+
+function closeAssistant() {
+  assistantOpen.value = false;
+}
+
+function submitAssistantMessage() {
+  const question = assistantInput.value.trim();
+  if (!question || assistantBusy.value) return;
+
+  assistantMessages.value.push({
+    id: assistantMessageId++,
+    role: 'user',
+    content: question,
+    phase: 'done'
+  });
+  assistantInput.value = '';
+  assistantOpen.value = true;
+
+  const replyMessage = {
+    id: assistantMessageId++,
+    role: 'assistant',
+    content: '',
+    phase: 'thinking'
+  };
+  assistantMessages.value.push(replyMessage);
+  assistantState.value = 'thinking';
+  clearAssistantTimers();
+
+  assistantThinkingTimer = setTimeout(() => {
+    const replySource = assistantReplySamples[Math.floor(Math.random() * assistantReplySamples.length)];
+    let pointer = 0;
+    replyMessage.phase = 'replying';
+    assistantState.value = 'replying';
+
+    assistantReplyTimer = setInterval(() => {
+      const nextChunk = replySource.slice(pointer, pointer + 2);
+      replyMessage.content += nextChunk;
+      pointer += 2;
+
+      if (pointer >= replySource.length) {
+        clearAssistantTimers();
+        replyMessage.phase = 'done';
+        assistantState.value = 'idle';
+      }
+    }, 45);
+  }, 3000);
 }
 
 async function submitFeedback() {
@@ -204,7 +391,39 @@ async function submitFeedback() {
 }
 
 function handleLogout() {
+  clearAssistantTimers();
   logout();
   router.push({ name: 'Login' });
 }
+
+onBeforeUnmount(() => {
+  clearAssistantTimers();
+});
+
+watch(showAssistantOrb, (visible) => {
+  if (!visible) {
+    assistantSleepy.value = false;
+    clearAssistantSleepTimer();
+    return;
+  }
+  scheduleAssistantSleep();
+}, { immediate: true });
+
+watch(assistantHappyActive, (isHappy) => {
+  if (isHappy) {
+    assistantSleepy.value = false;
+    clearAssistantSleepTimer();
+    return;
+  }
+  scheduleAssistantSleep();
+}, { immediate: true });
+
+watch(assistantBusy, (busy) => {
+  if (busy) {
+    assistantSleepy.value = false;
+    clearAssistantSleepTimer();
+    return;
+  }
+  scheduleAssistantSleep();
+});
 </script>

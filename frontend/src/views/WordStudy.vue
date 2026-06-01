@@ -6,18 +6,16 @@
       </div>
       <div class="toolbar">
         <div class="toolbar-left lexicon-filter-bar">
-          <div class="word-study-textbook-anchor">
-            <select v-model.number="filters.textbookId">
-              <option v-for="textbook in textbooks" :key="textbook.id" :value="textbook.id">{{ textbook.name }}</option>
-            </select>
-            <div class="favorite-filter-control word-study-favorite-filter">
-              <span>只看收藏</span>
-              <label class="switch">
-                <input v-model="filters.favoritesOnly" type="checkbox" />
-                <span class="slider"></span>
-              </label>
-            </div>
+          <div class="favorite-filter-control word-study-inline-favorite-filter">
+            <span>只看收藏</span>
+            <label class="switch">
+              <input v-model="filters.favoritesOnly" type="checkbox" />
+              <span class="slider"></span>
+            </label>
           </div>
+          <select v-model.number="filters.textbookId">
+            <option v-for="textbook in textbooks" :key="textbook.id" :value="textbook.id">{{ textbook.name }}</option>
+          </select>
           <select v-model="filters.lessonScope" class="lesson-filter-select">
             <option value="all">全部课</option>
             <option value="firstHalf">上半</option>
@@ -26,44 +24,22 @@
               第{{ lesson.lesson_number }}课
             </option>
           </select>
-          <select v-model.number="filters.unitId" :disabled="lessonFilterAll">
+          <select v-model.number="filters.unitId" class="word-study-compact-select" :disabled="lessonFilterAll">
             <option :value="0">全部单元</option>
             <option v-for="unit in unitOptions" :key="unit.id" :value="unit.id">
               {{ unit.name }}
             </option>
           </select>
-          <select v-model="filters.tableType" :disabled="lessonFilterAll">
+          <select v-model="filters.tableType" class="word-study-compact-select" :disabled="lessonFilterAll">
             <option value="all">全部词表</option>
             <option value="new">新出単語</option>
             <option value="practice">練習用単語</option>
           </select>
           <input v-model.trim="keyword" placeholder="搜索词条/中文翻译" @keydown.enter.prevent="refresh" />
-          <button class="ghost" @click="toggleIdOrder" :disabled="loading">
+          <button class="ghost word-study-toolbar-button" @click="toggleIdOrder" :disabled="loading">
             {{ idOrder === 'asc' ? '倒序查看' : '顺序查看' }}
           </button>
-          <button class="ghost" @click="refresh" :disabled="loading">刷新</button>
-        </div>
-        <div class="toolbar-right">
-          <div class="pagination inline-pagination">
-            <span class="muted pagination-total">共 {{ total }} 条</span>
-            <button class="ghost" :disabled="page === 1 || loading" @click="changePage(page - 1)">上一页</button>
-            <label class="pagination-jump" for="word-study-page-jump">
-              第
-              <input
-                id="word-study-page-jump"
-                v-model.number="pageJump"
-                class="page-jump-input page-number-input"
-                type="number"
-                min="1"
-                :max="totalPages"
-                :disabled="totalPages <= 1 || loading"
-                @keydown.enter.prevent="jumpToPage"
-                @blur="jumpToPage"
-              />
-              / {{ totalPages }} 页
-            </label>
-            <button class="ghost" :disabled="page === totalPages || loading" @click="changePage(page + 1)">下一页</button>
-          </div>
+          <button class="word-study-toolbar-button word-study-practice-button" @click="notifyPending" :disabled="loading">练习</button>
         </div>
       </div>
     </div>
@@ -115,6 +91,30 @@
         </div>
         <div v-else class="empty">暂无条目</div>
       </div>
+    </div>
+
+    <div class="study-footer-bar word-study-footer-bar">
+      <span class="muted study-footer-total">共 {{ total }} 条</span>
+      <div class="pagination management-inline-pagination study-footer-pagination">
+        <button class="ghost" :disabled="page === 1 || loading" @click="changePage(page - 1)">上一页</button>
+        <label class="management-pagination-jump" for="word-study-page-jump">
+          第
+          <input
+            id="word-study-page-jump"
+            v-model.number="pageJump"
+            class="management-page-number-input"
+            type="number"
+            min="1"
+            :max="totalPages"
+            :disabled="totalPages <= 1 || loading"
+            @keydown.enter.prevent="jumpToPage"
+            @blur="jumpToPage"
+          />
+          / {{ totalPages }} 页
+        </label>
+        <button class="ghost" :disabled="page === totalPages || loading" @click="changePage(page + 1)">下一页</button>
+      </div>
+      <span class="study-footer-spacer" aria-hidden="true"></span>
     </div>
 
     <div v-if="toast.visible" class="toast" :class="toast.type">{{ toast.message }}</div>
@@ -233,6 +233,10 @@ function toggleIdOrder() {
   idOrder.value = idOrder.value === 'asc' ? 'desc' : 'asc';
   page.value = 1;
   refresh();
+}
+
+function notifyPending() {
+  showToast('练习功能暂未开放');
 }
 
 function partOfSpeechMeta(item) {

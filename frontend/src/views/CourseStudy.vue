@@ -3,7 +3,6 @@
     <div class="management-header">
       <div>
         <h2>课程学习</h2>
-        <p class="muted total-count">共 {{ total }} 条</p>
       </div>
       <div class="toolbar management-toolbar">
         <div class="toolbar-left">
@@ -65,24 +64,28 @@
       </div>
     </div>
 
-    <div class="pagination management-inline-pagination">
-      <button class="ghost" :disabled="page === 1 || loading" @click="changePage(page - 1)">上一页</button>
-      <label class="management-pagination-jump" for="course-study-page-jump">
-        第
-        <input
-          id="course-study-page-jump"
-          v-model.number="pageJump"
-          class="management-page-number-input"
-          type="number"
-          min="1"
-          :max="totalPages"
-          :disabled="totalPages <= 1 || loading"
-          @keydown.enter.prevent="jumpToPage"
-          @blur="jumpToPage"
-        />
-        / {{ totalPages }} 页
-      </label>
-      <button class="ghost" :disabled="page === totalPages || loading" @click="changePage(page + 1)">下一页</button>
+    <div class="study-footer-bar">
+      <span class="muted study-footer-total">共 {{ total }} 条</span>
+      <div class="pagination management-inline-pagination study-footer-pagination">
+        <button class="ghost" :disabled="page === 1 || loading" @click="changePage(page - 1)">上一页</button>
+        <label class="management-pagination-jump" for="course-study-page-jump">
+          第
+          <input
+            id="course-study-page-jump"
+            v-model.number="pageJump"
+            class="management-page-number-input"
+            type="number"
+            min="1"
+            :max="totalPages"
+            :disabled="totalPages <= 1 || loading"
+            @keydown.enter.prevent="jumpToPage"
+            @blur="jumpToPage"
+          />
+          / {{ totalPages }} 页
+        </label>
+        <button class="ghost" :disabled="page === totalPages || loading" @click="changePage(page + 1)">下一页</button>
+      </div>
+      <span class="study-footer-spacer" aria-hidden="true"></span>
     </div>
 
     <div v-if="toast.visible" class="toast" :class="toast.type">{{ toast.message }}</div>
