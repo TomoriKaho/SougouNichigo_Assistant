@@ -54,28 +54,44 @@
         <div v-if="rows.length" class="lexicon-entry-grid">
           <article v-for="item in rows" :key="item.id" class="lexicon-entry-card" :data-entry-id="item.id">
             <div class="lexicon-entry-main" :class="{ 'is-scrollable': scrollableEntryIds.has(item.id) }">
-              <div class="lexicon-card-header">
+              <div
+                class="lexicon-card-header word-study-card-header"
+                :class="{ 'has-meta': hasWordStudyMeta(item) }"
+              >
                 <h3 class="lexicon-entry-term" :title="item.term">
                   <span>{{ item.term }}</span>
                   <span v-if="item.accent" class="lexicon-entry-accent">{{ item.accent }}</span>
                 </h3>
-                <span v-if="partOfSpeechMeta(item)" class="lexicon-entry-grammar">{{ partOfSpeechMeta(item) }}</span>
+                <div
+                  v-if="hasWordStudyMeta(item)"
+                  class="word-study-entry-meta"
+                >
+                  <span v-if="partOfSpeechMeta(item)" class="lexicon-entry-tag word-study-pos-tag">
+                    {{ partOfSpeechMeta(item) }}
+                  </span>
+                  <div v-if="metadataTags(item).length" class="lexicon-entry-tag-row word-study-entry-tag-row">
+                    <span
+                      v-for="tag in metadataTags(item)"
+                      :key="tag.key"
+                      class="lexicon-entry-tag"
+                      :class="tag.className"
+                    >
+                      {{ tag.label }}
+                    </span>
+                  </div>
+                </div>
               </div>
               <p v-if="item.supplement" class="lexicon-entry-supplement">({{ item.supplement }})</p>
               <p class="lexicon-entry-translation">{{ item.explanation || '-' }}</p>
             </div>
-            <div v-if="metadataTags(item).length" class="lexicon-entry-tags word-study-entry-tags">
-              <div class="lexicon-entry-tag-row">
-                <span
-                  v-for="tag in metadataTags(item)"
-                  :key="tag.key"
-                  class="lexicon-entry-tag"
-                  :class="tag.className"
-                >
-                  {{ tag.label }}
-                </span>
-              </div>
-            </div>
+            <button
+              class="word-study-question-button"
+              type="button"
+              aria-label="提问"
+              @click="notifyQuestionPending"
+            >
+              ?
+            </button>
             <div class="lexicon-entry-actions word-study-entry-actions">
               <button
                 class="word-study-favorite-button"
@@ -85,14 +101,6 @@
                 @click="toggleFavorite(item)"
               >
                 {{ item.is_favorite ? '★' : '☆' }}
-              </button>
-              <button
-                class="word-study-question-button"
-                type="button"
-                aria-label="提问"
-                @click="notifyQuestionPending"
-              >
-                ?
               </button>
             </div>
           </article>
@@ -262,6 +270,10 @@ function metadataTags(item) {
   if (item?.is_onomatopoeia) tags.push({ key: 'onomatopoeia', label: 'オノマトペ', className: 'tag-onomatopoeia' });
   if (item?.is_loanword) tags.push({ key: 'loanword', label: '外来词', className: 'tag-loanword' });
   return tags;
+}
+
+function hasWordStudyMeta(item) {
+  return Boolean(partOfSpeechMeta(item) || metadataTags(item).length);
 }
 
 async function toggleFavorite(item) {

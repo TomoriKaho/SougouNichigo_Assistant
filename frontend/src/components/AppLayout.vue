@@ -215,6 +215,7 @@ let assistantReplyTimer = null;
 let assistantSleepTimer = null;
 let assistantOrbPressTimer = null;
 let assistantPanelSnapbackTimer = null;
+let assistantSidebarAdjustTimer = null;
 const assistantResizeDirections = ['n', 'e', 's', 'w', 'ne', 'nw', 'se', 'sw'];
 const assistantOrbSize = 96;
 const assistantOrbDefaultOffset = { right: 38, bottom: 26 };
@@ -352,7 +353,9 @@ function closeFeedback() {
 }
 
 function toggleSidebar() {
+  const previousContentLeft = contentRef.value?.getBoundingClientRect?.().left || 0;
   sidebarCollapsed.value = !sidebarCollapsed.value;
+  preserveAssistantOrbViewportPosition(previousContentLeft);
 }
 
 function assistantContentMetrics() {
@@ -466,6 +469,26 @@ function clearAssistantPanelSnapbackTimer() {
   }
 }
 
+function clearAssistantSidebarAdjustTimer() {
+  if (assistantSidebarAdjustTimer) {
+    clearTimeout(assistantSidebarAdjustTimer);
+    assistantSidebarAdjustTimer = null;
+  }
+}
+
+function preserveAssistantOrbViewportPosition(previousContentLeft) {
+  if (!showAssistantOrb.value || !assistantOrbReady.value) return;
+  clearAssistantSidebarAdjustTimer();
+
+  const previousViewportLeft = previousContentLeft + assistantOrbPosition.left;
+  assistantSidebarAdjustTimer = setTimeout(() => {
+    const nextContentLeft = contentRef.value?.getBoundingClientRect?.().left || 0;
+    assistantOrbPosition.left = previousViewportLeft - nextContentLeft;
+    clampAssistantOrb();
+    assistantSidebarAdjustTimer = null;
+  }, 190);
+}
+
 function scheduleAssistantSleep() {
   clearAssistantSleepTimer();
   if (!showAssistantOrb.value || assistantHappyActive.value || assistantBusy.value) return;
@@ -492,6 +515,7 @@ function clearAssistantTimers() {
   clearAssistantSleepTimer();
   clearAssistantOrbPressTimer();
   clearAssistantPanelSnapbackTimer();
+  clearAssistantSidebarAdjustTimer();
 }
 
 async function openAssistant() {
@@ -580,7 +604,7 @@ function startAssistantOrbPress(event) {
     assistantSleepy.value = false;
     clearAssistantSleepTimer();
     assistantOrbPressTimer = null;
-  }, 180);
+  }, 320);
 }
 
 function handleAssistantOrbPointerMove(event) {

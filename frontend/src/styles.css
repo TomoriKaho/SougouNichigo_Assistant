@@ -1827,6 +1827,7 @@ textarea:disabled {
 
 .lexicon-entry-main {
   flex: 1;
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1901,6 +1902,53 @@ textarea:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.word-study-card-header {
+  position: relative;
+  display: block;
+  align-items: flex-start;
+  padding-right: 0;
+}
+
+.word-study-card-header.has-meta {
+  padding-right: 92px;
+}
+
+.word-study-card-header .lexicon-entry-term {
+  max-width: none;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+}
+
+.word-study-card-header .lexicon-entry-term:hover {
+  white-space: normal;
+  overflow: visible;
+}
+
+.word-study-entry-meta {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 0;
+  width: 84px;
+  max-width: 84px;
+}
+
+.word-study-pos-tag {
+  background: rgba(71, 85, 105, 0.14);
+  color: #334155;
+  border-color: rgba(71, 85, 105, 0.26);
+}
+
+.word-study-entry-tag-row {
+  justify-content: flex-end;
 }
 
 .lexicon-entry-supplement {
@@ -2055,13 +2103,13 @@ textarea:disabled {
   position: absolute;
   right: 12px;
   bottom: 12px;
-  gap: 4px;
+  gap: 0;
   margin: 0;
   padding: 0;
   z-index: 2;
 }
 
-.word-study-entry-actions .word-study-question-button,
+.word-study-question-button,
 .word-study-entry-actions .word-study-favorite-button {
   padding: 0;
   min-width: 0;
@@ -2072,7 +2120,11 @@ textarea:disabled {
   line-height: 1;
 }
 
-.word-study-entry-actions .word-study-question-button {
+.word-study-question-button {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 2;
   color: rgba(139, 0, 18, 0.52);
   font-family: 'SimHei', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-weight: 700;
@@ -2082,7 +2134,7 @@ textarea:disabled {
   color: rgba(139, 0, 18, 0.52);
 }
 
-.word-study-entry-actions .word-study-question-button:hover,
+.word-study-question-button:hover,
 .word-study-entry-actions .word-study-favorite-button:hover {
   background: transparent;
   box-shadow: none;
@@ -2090,7 +2142,7 @@ textarea:disabled {
   transform: none;
 }
 
-.word-study-entry-actions .word-study-question-button:hover {
+.word-study-question-button:hover {
   color: rgba(139, 0, 18, 0.8);
 }
 
@@ -3061,7 +3113,6 @@ button.warning:hover {
   left: calc(var(--sidebar-width) + (100vw - var(--sidebar-width)) / 2);
   top: 12px;
   padding: 12px 16px;
-  border-radius: 10px;
   background: var(--theme-red-dark);
   color: white;
   font-weight: 600;
@@ -3084,14 +3135,17 @@ button.warning:hover {
     opacity: 0;
     transform: translateX(-50%) translateY(-8px) scale(0.96);
   }
+
   12% {
     opacity: 1;
     transform: translateX(-50%) translateY(0) scale(1);
   }
+
   76% {
     opacity: 1;
     transform: translateX(-50%) translateY(0) scale(1);
   }
+
   100% {
     opacity: 0;
     transform: translateX(-50%) translateY(-10px) scale(0.98);
