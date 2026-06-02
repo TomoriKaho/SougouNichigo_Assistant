@@ -557,7 +557,7 @@ function createAssistantWelcomeMessage() {
   return {
     id: 1,
     role: 'assistant',
-    content: '你好呀，我已经准备好啦。你可以直接向我提问。',
+    content: '你好呀，我是你的AI日语助手阿酱。你可以向我提问任何日语相关的问题，我会为你详细解释。',
     created_at: new Date().toISOString(),
     phase: 'done'
   };

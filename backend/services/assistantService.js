@@ -23,7 +23,7 @@ function initialMessageFor(conversation) {
   if (conversation.context_type === 'text') {
     return `关于文章 **「${conversation.context_label || '这篇文章'}」**，你想问些什么？`
   }
-  return '你好呀，我是你的AI日语助手あーちゃん。你可以向我提问任何日语相关的问题，我会详细为你解释。'
+  return '你好呀，我是你的AI日语助手阿酱。你可以向我提问任何日语相关的问题，我会为你详细解释。'
 }
 
 function normalizeConversationTitle(title) {
