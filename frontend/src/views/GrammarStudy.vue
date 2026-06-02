@@ -80,7 +80,7 @@
                     {{ isExpanded(item.id) ? '收起' : '详情' }}
                   </button>
                   <button class="ghost" @click.stop="notifyPending('练习')">练习</button>
-                  <button class="ghost" @click.stop="notifyPending('提问')">提问</button>
+                  <button class="ghost" @click.stop="openGrammarAssistant(item)">提问</button>
                 </td>
               </tr>
               <tr v-if="isExpanded(item.id)" class="grammar-study-detail-row">
@@ -334,6 +334,19 @@ async function toggleFavorite(item) {
 
 function notifyPending(label) {
   showToast(`${label}功能暂未开放`);
+}
+
+function openGrammarAssistant(item) {
+  if (!item?.id) {
+    showToast('文法条目信息无效', 'error');
+    return;
+  }
+  window.dispatchEvent(new CustomEvent('assistant:context', {
+    detail: {
+      contextType: 'grammar',
+      id: item.id
+    }
+  }));
 }
 
 watch(() => filters.textbookId, () => {

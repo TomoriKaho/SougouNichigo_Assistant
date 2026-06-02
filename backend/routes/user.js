@@ -8,6 +8,7 @@ const { Text } = require('../models/Text')
 const { Vocabulary } = require('../models/Vocabulary')
 const { Classroom } = require('../models/Classroom')
 const { authMiddleware, signUserToken, USER_JWT_EXPIRES_IN } = require('../middleware/auth')
+const assistantService = require('../services/assistantService')
 
 const USERNAME_PATTERN = /^[A-Za-z0-9]{6,15}$/
 const PASSWORD_PATTERN = /^[A-Za-z0-9!@#$%^&*()_+\-.]{8,20}$/
@@ -50,6 +51,11 @@ function streamReadingMaterial(res, item, { view = false } = {}) {
   res.setHeader('Content-Type', view ? ReadingMaterial.viewContentType(item) : ReadingMaterial.contentType(item))
   res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`)
   return fs.createReadStream(filePath).pipe(res)
+}
+
+function writeSse(res, event, data) {
+  res.write(`event: ${event}\n`)
+  res.write(`data: ${JSON.stringify(data)}\n\n`)
 }
 
 function publicReadingMaterial(row) {
@@ -152,6 +158,87 @@ router.post('/login', (req, res) => {
 
 router.get('/me', authMiddleware, (req, res) => {
   res.json({ success: true, user: req.user })
+})
+
+router.post('/assistant/conversations', authMiddleware, (req, res) => {
+  const contextType = String(req.body.context_type || req.body.contextType || 'none')
+  const contextId = req.body.context_id || req.body.contextId
+
+  if (contextType === 'vocabulary') {
+    const result = assistantService.createVocabularyConversation(req.user.id, contextId)
+    if (!result) return res.status(404).json({ error: '词条不存在' })
+    return res.status(201).json(result)
+  }
+
+  if (contextType === 'grammar') {
+    const result = assistantService.createGrammarConversation(req.user.id, contextId)
+    if (!result) return res.status(404).json({ error: '文法条目不存在' })
+    return res.status(201).json(result)
+  }
+
+  if (contextType === 'text') {
+    return res.status(400).json({ error: '文章提问暂未开放' })
+  }
+
+  if (contextType !== 'none') {
+    return res.status(400).json({ error: '对话上下文类型无效' })
+  }
+
+  return res.status(201).json(assistantService.createFreeConversation(req.user.id))
+})
+
+router.get('/assistant/conversations', authMiddleware, (req, res) => {
+  res.json(assistantService.listConversations({
+    userId: req.user.id,
+    contextType: req.query.context_type || req.query.contextType,
+    contextId: req.query.context_id || req.query.contextId,
+    limit: parseLimit(req.query.limit, 50, 200),
+    offset: parseOffset(req.query.offset)
+  }))
+})
+
+router.get('/assistant/conversations/:id', authMiddleware, (req, res) => {
+  const result = assistantService.getConversation(req.user.id, req.params.id)
+  if (!result) return res.status(404).json({ error: '对话不存在' })
+  res.json(result)
+})
+
+router.post('/assistant/conversations/:id/messages/stream', authMiddleware, async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
+  res.setHeader('Cache-Control', 'no-cache, no-transform')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders?.()
+
+  try {
+    const result = await assistantService.streamAssistantReply({
+      userId: req.user.id,
+      conversationId: req.params.id,
+      content: req.body.content,
+      templateKey: req.body.template_key || req.body.templateKey,
+      forceWebSearch: parseFlag(req.body.force_web_search || req.body.forceWebSearch),
+      onDelta: (content) => writeSse(res, 'delta', { content })
+    })
+    writeSse(res, 'done', result)
+  } catch (error) {
+    writeSse(res, 'error', {
+      error: error.message || 'AI 回复失败',
+      status: error.status || 500
+    })
+  } finally {
+    res.end()
+  }
+})
+
+router.post('/assistant/context/vocabulary/:id', authMiddleware, (req, res) => {
+  const result = assistantService.createVocabularyConversation(req.user.id, req.params.id)
+  if (!result) return res.status(404).json({ error: '词条不存在' })
+  res.status(201).json(result)
+})
+
+router.post('/assistant/context/grammar/:id', authMiddleware, (req, res) => {
+  const result = assistantService.createGrammarConversation(req.user.id, req.params.id)
+  if (!result) return res.status(404).json({ error: '文法条目不存在' })
+  res.status(201).json(result)
 })
 
 router.get('/grammar/options', authMiddleware, (req, res) => {

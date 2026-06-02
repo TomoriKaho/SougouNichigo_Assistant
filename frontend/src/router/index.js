@@ -29,7 +29,7 @@ const routes = [
     meta: { requiresAuth: true },
     children: [
       { path: '', name: 'Dashboard', component: Dashboard },
-      { path: 'course-study', name: 'CourseStudy', component: CourseStudy, meta: { title: '课程学习', requiresUser: true } },
+      { path: 'course-study', name: 'CourseStudy', component: CourseStudy, meta: { title: '课文学习', requiresUser: true } },
       { path: 'word-study', name: 'WordStudy', component: WordStudy, meta: { title: '单词学习', requiresUser: true } },
       { path: 'grammar-study', name: 'GrammarStudy', component: GrammarStudy, meta: { title: '文法学习', requiresUser: true } },
       { path: 'classes', name: 'Classes', component: Classes, meta: { title: '班级', requiresUser: true } },

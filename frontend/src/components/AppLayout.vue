@@ -20,7 +20,7 @@
       </div>
       <nav v-show="!sidebarCollapsed">
         <RouterLink to="/" end>首页</RouterLink>
-        <RouterLink v-if="isUserMode" to="/course-study">课程学习</RouterLink>
+        <RouterLink v-if="isUserMode" to="/course-study">课文学习</RouterLink>
         <RouterLink v-if="isUserMode" to="/word-study">单词学习</RouterLink>
         <RouterLink v-if="isUserMode" to="/grammar-study">文法学习</RouterLink>
         <RouterLink v-if="isUserMode" to="/translation-practice">翻译练习</RouterLink>
@@ -88,6 +88,47 @@
               <button class="ghost assistant-close-button" type="button" @click="closeAssistant">关闭</button>
             </div>
 
+            <div v-if="assistantHistoryOpen" class="assistant-history-panel">
+              <div class="assistant-history-header">
+                <strong>对话历史</strong>
+                <button class="ghost" type="button" @click="loadAssistantHistory" :disabled="assistantHistoryLoading">刷新</button>
+              </div>
+              <div v-if="assistantHistoryError" class="assistant-history-error">{{ assistantHistoryError }}</div>
+              <div v-else-if="assistantHistoryLoading" class="assistant-history-empty">加载中...</div>
+              <div v-else-if="assistantHistoryRows.length" class="assistant-history-list">
+                <button
+                  v-for="item in assistantHistoryRows"
+                  :key="item.id"
+                  class="assistant-history-item"
+                  :class="{ active: assistantActiveConversation?.id === item.id }"
+                  type="button"
+                  @click="loadAssistantConversation(item.id)"
+                >
+                  <span>{{ assistantConversationTitle(item) }}</span>
+                  <small>{{ item.owner_username || '-' }} · {{ formatAssistantTime(item.updated_at) }}</small>
+                  <em v-if="item.last_message_excerpt">{{ item.last_message_excerpt }}</em>
+                </button>
+              </div>
+              <div v-else class="assistant-history-empty">暂无对话历史</div>
+            </div>
+
+            <div v-if="assistantSuggestedQuestions.length && !assistantReadOnly" class="assistant-suggestions">
+              <button
+                v-for="question in assistantSuggestedQuestions"
+                :key="question.key"
+                class="ghost"
+                type="button"
+                :disabled="assistantBusy"
+                @click="sendAssistantQuickQuestion(question)"
+              >
+                {{ question.label }}
+              </button>
+            </div>
+
+            <div v-if="assistantReadOnly" class="assistant-readonly-note">
+              正在查看共享历史，不能在该对话中继续提问。
+            </div>
+
             <div class="assistant-chat-body">
               <div
                 v-for="message in assistantMessages"
@@ -110,11 +151,14 @@
               <textarea
                 v-model.trim="assistantInput"
                 rows="3"
-                :disabled="assistantBusy"
+                :disabled="assistantBusy || assistantReadOnly"
                 placeholder="输入你想问的问题..."
               ></textarea>
               <div class="assistant-chat-actions">
-                <button type="submit" :disabled="assistantBusy || !assistantInput.trim()">
+                <button class="ghost assistant-history-toggle" type="button" @click="toggleAssistantHistory">
+                  对话历史
+                </button>
+                <button type="submit" :disabled="assistantBusy || assistantReadOnly || !assistantInput.trim()">
                   {{ assistantBusy ? '处理中...' : '发送' }}
                 </button>
               </div>
@@ -180,7 +224,7 @@ import assistantSadImage from '../assistant/assistant-sad.webp';
 import assistantSleepyImage from '../assistant/assistant-sleepy.webp';
 import assistantThinkingImage from '../assistant/assistant-thinking.webp';
 import { useAuth } from '../composables/useAuth';
-import { apiRequest, ApiError } from '../utils/apiClient';
+import { apiRequest, ApiError, getApiRoot, getAuthToken } from '../utils/apiClient';
 
 const route = useRoute();
 const router = useRouter();
@@ -224,6 +268,11 @@ const assistantOrbPosition = reactive({ left: 0, top: 0 });
 const assistantOrbReady = ref(false);
 const assistantOrbDragging = ref(false);
 const assistantOrbDragged = ref(false);
+const assistantActiveConversation = ref(null);
+const assistantHistoryOpen = ref(false);
+const assistantHistoryLoading = ref(false);
+const assistantHistoryRows = ref([]);
+const assistantHistoryError = ref('');
 const assistantPanelPosition = reactive({ left: 0, top: 0 });
 const assistantPanelSize = reactive({ width: assistantDefaultPanelSize.width, height: assistantDefaultPanelSize.height });
 const assistantPanelReady = ref(false);
@@ -247,12 +296,6 @@ const assistantInteraction = reactive({
   startWidth: 0,
   startHeight: 0
 });
-const assistantReplySamples = [
-  '这个问题我已经记下来了。当前回复还是占位内容，后面可以把它接到真正的 AI 服务上，再根据你的学习页面上下文给出更贴切的回答。',
-  '我现在先用一段模拟回复和你对话。等后续接入真实模型后，这里可以继续扩展成结合词库、文法、课程资料和班级内容的智能问答。',
-  '这是本地模拟的流式回复效果。后续如果要做正式版本，建议把页面上下文、当前教材和用户身份一起带给模型，这样回答会更有用。'
-];
-
 const titles = {
   Dashboard: '首页',
   Users: '用户管理',
@@ -261,7 +304,7 @@ const titles = {
   Texts: '课文管理',
   Feedback: '反馈处理',
   DatabaseManagement: '数据库管理',
-  CourseStudy: '课程学习',
+  CourseStudy: '课文学习',
   WordStudy: '单词学习',
   GrammarStudy: '文法学习',
   Classes: '班级',
@@ -310,6 +353,8 @@ const assistantStatusText = computed(() => {
   if (assistantSleepy.value) return '我先休息一下';
   return '你的智能日语学习助手';
 });
+const assistantSuggestedQuestions = computed(() => assistantActiveConversation.value?.suggested_questions || []);
+const assistantReadOnly = computed(() => Boolean(assistantActiveConversation.value?.is_read_only));
 const assistantOrbStyle = computed(() => ({
   left: `${assistantOrbPosition.left}px`,
   top: `${assistantOrbPosition.top}px`
@@ -338,6 +383,215 @@ function showToast(message, type = 'info') {
   setTimeout(() => {
     toast.visible = false;
   }, 1600);
+}
+
+function mapAssistantMessage(message) {
+  return {
+    id: message.id || `${message.role}-${Date.now()}-${Math.random()}`,
+    role: message.role === 'user' ? 'user' : 'assistant',
+    content: message.content || '',
+    phase: 'done'
+  };
+}
+
+function setAssistantConversation(payload) {
+  assistantActiveConversation.value = payload?.conversation || null;
+  assistantMessages.value = (payload?.messages || []).map(mapAssistantMessage);
+  const maxMessageId = assistantMessages.value.reduce((max, message) => {
+    const id = Number(message.id);
+    return Number.isFinite(id) ? Math.max(max, id) : max;
+  }, assistantMessageId);
+  assistantMessageId = maxMessageId + 1;
+  assistantHistoryOpen.value = false;
+  assistantState.value = 'idle';
+}
+
+function assistantConversationTitle(item) {
+  if (!item) return '自由提问';
+  if (item.context_type === 'vocabulary') return `单词：${item.context_label || '-'}`;
+  if (item.context_type === 'grammar') return `文法：${item.context_label || '-'}`;
+  if (item.context_type === 'text') return `文章：${item.context_label || '-'}`;
+  return item.context_label || '自由提问';
+}
+
+function formatAssistantTime(value) {
+  return String(value || '').replace(/:\d{2}$/, '');
+}
+
+function assistantHistoryParams() {
+  const conversation = assistantActiveConversation.value;
+  if (conversation?.context_type && conversation.context_type !== 'none' && conversation.context_id) {
+    return {
+      context_type: conversation.context_type,
+      context_id: conversation.context_id
+    };
+  }
+  return {};
+}
+
+async function ensureAssistantConversation() {
+  if (assistantActiveConversation.value && !assistantReadOnly.value) return assistantActiveConversation.value;
+  const data = await apiRequest('/api/user/assistant/conversations', {
+    method: 'POST',
+    body: { context_type: 'none' },
+    timeout: 30000
+  });
+  setAssistantConversation(data);
+  return assistantActiveConversation.value;
+}
+
+async function loadAssistantConversation(id) {
+  try {
+    const data = await apiRequest(`/api/user/assistant/conversations/${id}`, { timeout: 30000 });
+    setAssistantConversation(data);
+  } catch (err) {
+    showToast(err instanceof ApiError ? err.message : '加载对话失败', 'error');
+  }
+}
+
+async function loadAssistantHistory() {
+  assistantHistoryLoading.value = true;
+  assistantHistoryError.value = '';
+  try {
+    const data = await apiRequest('/api/user/assistant/conversations', {
+      params: {
+        limit: 80,
+        ...assistantHistoryParams()
+      },
+      timeout: 30000
+    });
+    assistantHistoryRows.value = data.rows || [];
+  } catch (err) {
+    assistantHistoryError.value = err instanceof ApiError ? err.message : '加载失败';
+  } finally {
+    assistantHistoryLoading.value = false;
+  }
+}
+
+async function toggleAssistantHistory() {
+  assistantHistoryOpen.value = !assistantHistoryOpen.value;
+  if (assistantHistoryOpen.value) {
+    await loadAssistantHistory();
+  }
+}
+
+function parseSseBlock(block) {
+  const eventLine = block.split(/\n/).find((line) => line.startsWith('event:'));
+  const dataLines = block.split(/\n/).filter((line) => line.startsWith('data:'));
+  const event = eventLine ? eventLine.replace(/^event:\s*/, '').trim() : 'message';
+  const dataText = dataLines.map((line) => line.replace(/^data:\s*/, '')).join('\n');
+  try {
+    return { event, data: JSON.parse(dataText) };
+  } catch (error) {
+    return { event, data: null };
+  }
+}
+
+function typeAssistantFullText(message, content) {
+  return new Promise((resolve) => {
+    if (!content) {
+      resolve();
+      return;
+    }
+    let index = 0;
+    message.content = '';
+    message.phase = 'replying';
+    assistantState.value = 'replying';
+    if (assistantReplyTimer) clearInterval(assistantReplyTimer);
+    assistantReplyTimer = setInterval(() => {
+      message.content += content.slice(index, index + 3);
+      index += 3;
+      if (index >= content.length) {
+        clearInterval(assistantReplyTimer);
+        assistantReplyTimer = null;
+        message.content = content;
+        message.phase = 'done';
+        assistantState.value = 'idle';
+        resolve();
+      }
+    }, 18);
+  });
+}
+
+async function streamAssistantMessage({ conversationId, content, templateKey, forceWebSearch, replyMessage }) {
+  const response = await fetch(`${getApiRoot()}/api/user/assistant/conversations/${conversationId}/messages/stream`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${getAuthToken()}`,
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream'
+    },
+    body: JSON.stringify({
+      content,
+      template_key: templateKey,
+      force_web_search: !!forceWebSearch
+    })
+  });
+
+  if (!response.ok || !response.body) {
+    const errorPayload = await response.json().catch(() => null);
+    throw new ApiError(errorPayload?.error || 'AI 回复失败', { status: response.status });
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let receivedDelta = false;
+
+  async function processBlock(block) {
+    if (!block.trim()) return;
+    const payload = parseSseBlock(block);
+    if (payload.event === 'delta' && payload.data?.content) {
+      if (!receivedDelta) {
+        replyMessage.content = '';
+        replyMessage.phase = 'replying';
+        assistantState.value = 'replying';
+        receivedDelta = true;
+      }
+      replyMessage.content += payload.data.content;
+      return;
+    }
+
+    if (payload.event === 'done') {
+      if (payload.data?.conversation) {
+        assistantActiveConversation.value = payload.data.conversation;
+      }
+      const finalContent = payload.data?.message?.content || replyMessage.content;
+      if (!receivedDelta && finalContent) {
+        await typeAssistantFullText(replyMessage, finalContent);
+      } else {
+        replyMessage.content = finalContent;
+        replyMessage.phase = 'done';
+        assistantState.value = 'idle';
+      }
+      return;
+    }
+
+    if (payload.event === 'error') {
+      throw new ApiError(payload.data?.error || 'AI 回复失败', { status: payload.data?.status || 500 });
+    }
+  }
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split(/\n\n+/);
+    buffer = blocks.pop() || '';
+
+    for (const block of blocks) {
+      await processBlock(block);
+    }
+  }
+
+  if (buffer.trim()) {
+    await processBlock(buffer);
+  }
+
+  if (assistantState.value !== 'idle') {
+    replyMessage.phase = 'done';
+    assistantState.value = 'idle';
+  }
 }
 
 function openFeedback() {
@@ -762,47 +1016,106 @@ function stopAssistantInteraction() {
   window.removeEventListener('pointerup', stopAssistantInteraction);
 }
 
-function submitAssistantMessage() {
-  const question = assistantInput.value.trim();
+async function sendAssistantMessage({ content, templateKey, forceWebSearch } = {}) {
+  const question = String(content || '').trim();
   if (!question || assistantBusy.value) return;
+  if (assistantReadOnly.value) {
+    showToast('共享历史只能查看，不能继续提问', 'error');
+    return;
+  }
 
-  assistantMessages.value.push({
+  let conversation;
+  try {
+    conversation = await ensureAssistantConversation();
+  } catch (err) {
+    showToast(err instanceof ApiError ? err.message : '创建对话失败', 'error');
+    return;
+  }
+
+  const userMessage = {
     id: assistantMessageId++,
     role: 'user',
     content: question,
     phase: 'done'
-  });
-  assistantInput.value = '';
-  assistantOpen.value = true;
-
+  };
   const replyMessage = {
     id: assistantMessageId++,
     role: 'assistant',
     content: '',
     phase: 'thinking'
   };
-  assistantMessages.value.push(replyMessage);
+
+  assistantMessages.value.push(userMessage, replyMessage);
+  assistantInput.value = '';
+  assistantOpen.value = true;
   assistantState.value = 'thinking';
-  clearAssistantTimers();
+  clearAssistantSleepTimer();
+  if (assistantReplyTimer) {
+    clearInterval(assistantReplyTimer);
+    assistantReplyTimer = null;
+  }
 
-  assistantThinkingTimer = setTimeout(() => {
-    const replySource = assistantReplySamples[Math.floor(Math.random() * assistantReplySamples.length)];
-    let pointer = 0;
-    replyMessage.phase = 'replying';
-    assistantState.value = 'replying';
+  try {
+    await streamAssistantMessage({
+      conversationId: conversation.id,
+      content: question,
+      templateKey,
+      forceWebSearch,
+      replyMessage
+    });
+    if (assistantHistoryOpen.value) {
+      await loadAssistantHistory();
+    }
+  } catch (err) {
+    replyMessage.phase = 'done';
+    replyMessage.content = err instanceof ApiError ? err.message : 'AI 回复失败，请稍后重试';
+    assistantState.value = 'idle';
+    showToast(replyMessage.content, 'error');
+  }
+}
 
-    assistantReplyTimer = setInterval(() => {
-      const nextChunk = replySource.slice(pointer, pointer + 2);
-      replyMessage.content += nextChunk;
-      pointer += 2;
+function submitAssistantMessage() {
+  sendAssistantMessage({ content: assistantInput.value });
+}
 
-      if (pointer >= replySource.length) {
-        clearAssistantTimers();
-        replyMessage.phase = 'done';
-        assistantState.value = 'idle';
-      }
-    }, 45);
-  }, 3000);
+function sendAssistantQuickQuestion(question) {
+  sendAssistantMessage({
+    content: question?.message || question?.label,
+    templateKey: question?.template_key,
+    forceWebSearch: question?.force_web_search
+  });
+}
+
+async function openAssistantContext(contextType, id) {
+  if (!showAssistantOrb.value) return;
+  if (!id || assistantBusy.value) {
+    showToast(assistantBusy.value ? 'AI 正在回复中' : '条目信息无效', 'error');
+    return;
+  }
+
+  try {
+    const data = await apiRequest(`/api/user/assistant/context/${contextType}/${id}`, {
+      method: 'POST',
+      timeout: 30000
+    });
+    setAssistantConversation(data);
+    assistantHistoryRows.value = [];
+    assistantHistoryError.value = '';
+    await openAssistant();
+  } catch (err) {
+    showToast(err instanceof ApiError ? err.message : '打开 AI 提问失败', 'error');
+  }
+}
+
+function handleAssistantContextEvent(event) {
+  const detail = event?.detail || {};
+  if (detail.contextType === 'vocabulary') {
+    openAssistantContext('vocabulary', detail.id);
+    return;
+  }
+  if (detail.contextType === 'grammar') {
+    openAssistantContext('grammar', detail.id);
+  }
 }
 
 async function submitFeedback() {
@@ -850,6 +1163,7 @@ onMounted(() => {
   ensureAssistantOrbPosition();
   window.addEventListener('resize', clampAssistantPanel);
   window.addEventListener('resize', clampAssistantOrb);
+  window.addEventListener('assistant:context', handleAssistantContextEvent);
 });
 
 watch(showAssistantOrb, (visible) => {
@@ -885,5 +1199,6 @@ onBeforeUnmount(() => {
   cancelAssistantOrbPress();
   window.removeEventListener('resize', clampAssistantPanel);
   window.removeEventListener('resize', clampAssistantOrb);
+  window.removeEventListener('assistant:context', handleAssistantContextEvent);
 });
 </script>

@@ -167,6 +167,40 @@ function initUserDatabase() {
       c.created_at
     FROM classes c
   `)
+
+  userDb.exec(`
+    CREATE TABLE IF NOT EXISTS assistant_conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      context_type TEXT NOT NULL DEFAULT 'none',
+      context_id INTEGER,
+      context_label TEXT,
+      context_snapshot_json TEXT,
+      template_key TEXT NOT NULL DEFAULT 'general_qa',
+      visibility TEXT NOT NULL DEFAULT 'private',
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `)
+
+  userDb.exec(`
+    CREATE TABLE IF NOT EXISTS assistant_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      used_web_search INTEGER DEFAULT 0,
+      citations_json TEXT,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (conversation_id) REFERENCES assistant_conversations(id) ON DELETE CASCADE
+    )
+  `)
+
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_assistant_conversations_user ON assistant_conversations(user_id)')
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_assistant_conversations_context ON assistant_conversations(context_type, context_id)')
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_assistant_conversations_updated ON assistant_conversations(updated_at)')
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_assistant_messages_conversation ON assistant_messages(conversation_id)')
 }
 
 function initVocabularyDatabase() {

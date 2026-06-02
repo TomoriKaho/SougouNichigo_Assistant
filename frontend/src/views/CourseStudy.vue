@@ -2,7 +2,7 @@
   <section class="card management-page text-page course-study-page">
     <div class="management-header">
       <div>
-        <h2>课程学习</h2>
+        <h2>课文学习</h2>
       </div>
       <div class="toolbar management-toolbar">
         <div class="toolbar-left">

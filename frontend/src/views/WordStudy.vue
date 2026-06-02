@@ -88,7 +88,7 @@
               class="word-study-question-button"
               type="button"
               aria-label="提问"
-              @click="notifyQuestionPending"
+              @click="openVocabularyAssistant(item)"
             >
               ?
             </button>
@@ -255,8 +255,17 @@ function notifyPending() {
   showToast('练习功能暂未开放');
 }
 
-function notifyQuestionPending() {
-  showToast('提问功能暂未开放');
+function openVocabularyAssistant(item) {
+  if (!item?.id) {
+    showToast('词条信息无效', 'error');
+    return;
+  }
+  window.dispatchEvent(new CustomEvent('assistant:context', {
+    detail: {
+      contextType: 'vocabulary',
+      id: item.id
+    }
+  }));
 }
 
 function partOfSpeechMeta(item) {
