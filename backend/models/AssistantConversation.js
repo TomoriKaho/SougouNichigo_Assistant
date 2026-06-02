@@ -50,6 +50,17 @@ function mapMessage(row) {
 }
 
 class AssistantConversation {
+  static hasUserQuestionClause(alias = 'c') {
+    return `
+      EXISTS (
+        SELECT 1
+        FROM assistant_messages hm
+        WHERE hm.conversation_id = ${alias}.id
+          AND hm.role = 'user'
+      )
+    `
+  }
+
   static create(payload = {}) {
     const contextType = normalizeContextType(payload.contextType)
     const visibility = normalizeVisibility(payload.visibility)
@@ -80,21 +91,10 @@ class AssistantConversation {
     return this.findById(result.lastInsertRowid)
   }
 
-  static listVisible({ userId, contextType, contextId, limit = 50, offset = 0 } = {}) {
-    const normalizedContextType = normalizeContextType(contextType)
-    const normalizedContextId = contextId ? Number(contextId) : 0
-    let where = "WHERE c.user_id = ? AND c.context_type = 'none'"
-    let params = [Number(userId)]
-
-    if (normalizedContextType !== 'none' && normalizedContextId > 0) {
-      where = `
-        WHERE (
-          (c.user_id = ? AND c.context_type = 'none')
-          OR (c.visibility = ? AND c.context_type = ? AND c.context_id = ?)
-        )
-      `
-      params = [Number(userId), 'context_shared', normalizedContextType, normalizedContextId]
-    }
+  static listOwned({ userId, limit = 50, offset = 0 } = {}) {
+    const hasUserQuestionClause = this.hasUserQuestionClause('c')
+    const where = `WHERE ${hasUserQuestionClause} AND c.user_id = ?`
+    const params = [Number(userId)]
 
     const rows = userDb.prepare(`
       SELECT
@@ -123,6 +123,79 @@ class AssistantConversation {
     `).get(...params).total
 
     return { rows, total }
+  }
+
+  static listSharedByContext({ userId, contextType, contextId, limit = 50, offset = 0 } = {}) {
+    const normalizedContextType = normalizeContextType(contextType)
+    const normalizedContextId = contextId ? Number(contextId) : 0
+
+    if (normalizedContextType === 'none' || normalizedContextId <= 0) {
+      return { rows: [], total: 0 }
+    }
+
+    const hasUserQuestionClause = this.hasUserQuestionClause('c')
+    const where = `
+      WHERE ${hasUserQuestionClause}
+        AND c.visibility = ?
+        AND c.context_type = ?
+        AND c.context_id = ?
+        AND c.user_id != ?
+    `
+    const params = ['context_shared', normalizedContextType, normalizedContextId, Number(userId)]
+
+    const rows = userDb.prepare(`
+      SELECT
+        c.*,
+        u.username AS owner_username,
+        lm.content AS last_message_excerpt,
+        lm.created_at AS last_message_at
+      FROM assistant_conversations c
+      JOIN users u ON u.id = c.user_id
+      LEFT JOIN assistant_messages lm ON lm.id = (
+        SELECT id
+        FROM assistant_messages
+        WHERE conversation_id = c.id
+        ORDER BY id DESC
+        LIMIT 1
+      )
+      ${where}
+      ORDER BY c.updated_at DESC, c.id DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, Number(limit), Number(offset)).map(mapConversation)
+
+    const total = userDb.prepare(`
+      SELECT COUNT(*) AS total
+      FROM assistant_conversations c
+      ${where}
+    `).get(...params).total
+
+    return { rows, total }
+  }
+
+  static deleteOwned(id, userId) {
+    const result = userDb.prepare(`
+      DELETE FROM assistant_conversations
+      WHERE id = ? AND user_id = ?
+    `).run(Number(id), Number(userId))
+    return result.changes > 0
+  }
+
+  static updateContextLabel(id, label) {
+    userDb.prepare(`
+      UPDATE assistant_conversations
+      SET context_label = ?, updated_at = datetime('now', 'localtime')
+      WHERE id = ?
+    `).run(String(label || '').trim() || null, Number(id))
+    return this.findById(id)
+  }
+
+  static updateOwnedContextLabel(id, userId, label) {
+    userDb.prepare(`
+      UPDATE assistant_conversations
+      SET context_label = ?, updated_at = datetime('now', 'localtime')
+      WHERE id = ? AND user_id = ?
+    `).run(String(label || '').trim() || null, Number(id), Number(userId))
+    return this.findOwnedById(id, userId)
   }
 
   static findById(id) {

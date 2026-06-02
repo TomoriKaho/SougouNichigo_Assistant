@@ -323,6 +323,7 @@ router.get('/vocabulary', requireAdmin, (req, res) => {
     keyword: req.query.q || req.query.keyword || '',
     userId: req.admin.id,
     favoritesOnly: parseFlag(req.query.favoritesOnly || req.query.favorites_only),
+    keyOnly: parseFlag(req.query.keyOnly || req.query.key_only),
     textbookId: req.query.textbookId,
     lessonId: req.query.lessonId,
     lessonNumberMin: req.query.lessonNumberMin || req.query.lesson_number_min,
@@ -345,6 +346,20 @@ router.delete('/vocabulary/:id/favorite', requireAdmin, (req, res) => {
   if (!item) return res.status(404).json({ error: '词条不存在' })
   Vocabulary.setFavorite(req.admin.id, req.params.id, false)
   res.json({ success: true, isFavorite: false })
+})
+
+router.post('/vocabulary/:id/key-word', requireAdmin, (req, res) => {
+  const item = Vocabulary.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '词条不存在' })
+  Vocabulary.setKeyWord(req.params.id, true)
+  res.json({ success: true, isKeyWord: true })
+})
+
+router.delete('/vocabulary/:id/key-word', requireAdmin, (req, res) => {
+  const item = Vocabulary.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '词条不存在' })
+  Vocabulary.setKeyWord(req.params.id, false)
+  res.json({ success: true, isKeyWord: false })
 })
 
 router.post('/vocabulary', requireAdmin, (req, res) => {
@@ -391,7 +406,8 @@ router.put('/vocabulary/:id', requireAdmin, (req, res) => {
     is_proper_noun: req.body.is_proper_noun,
     is_onomatopoeia: req.body.is_onomatopoeia,
     is_loanword: req.body.is_loanword,
-    has_kanji: req.body.has_kanji
+    has_kanji: req.body.has_kanji,
+    is_key_word: req.body.is_key_word
   })
   res.json({ success: true })
 })

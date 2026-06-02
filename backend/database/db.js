@@ -254,6 +254,7 @@ function initVocabularyDatabase() {
       accent TEXT,
       part_of_speech TEXT,
       explanation TEXT,
+      is_key_word INTEGER DEFAULT 1,
       order_index INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT DEFAULT (datetime('now', 'localtime')),
@@ -267,6 +268,8 @@ function initVocabularyDatabase() {
   ensureColumn(vocabularyDb, 'vocabulary_entries', 'is_onomatopoeia', 'is_onomatopoeia INTEGER DEFAULT 0')
   ensureColumn(vocabularyDb, 'vocabulary_entries', 'is_loanword', 'is_loanword INTEGER DEFAULT 0')
   ensureColumn(vocabularyDb, 'vocabulary_entries', 'has_kanji', 'has_kanji INTEGER DEFAULT 0')
+  ensureColumn(vocabularyDb, 'vocabulary_entries', 'is_key_word', 'is_key_word INTEGER DEFAULT 1')
+  vocabularyDb.exec('UPDATE vocabulary_entries SET is_key_word = 1 WHERE is_key_word IS NULL')
 
   vocabularyDb.exec(`
     CREATE TABLE IF NOT EXISTS vocabulary_favorites (

@@ -1,13 +1,11 @@
 const { getEnv } = require('../config/env')
 
-const DEFAULT_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-
 function providerConfig() {
   return {
-    provider: getEnv('AI_PROVIDER', 'bailian'),
-    model: getEnv('AI_MODEL', 'qwen-plus'),
+    provider: getEnv('AI_PROVIDER'),
+    model: getEnv('AI_MODEL'),
     apiKey: getEnv('DASHSCOPE_API_KEY', ''),
-    baseUrl: getEnv('AI_BASE_URL', DEFAULT_BASE_URL),
+    baseUrl: getEnv('AI_BASE_URL'),
     assignedSites: getEnv('AI_SEARCH_ASSIGNED_SITES', '')
       .split(',')
       .map((item) => item.trim())
@@ -31,8 +29,25 @@ async function parseNonStreamingResponse(response) {
   }
 }
 
+async function completeChat({ messages, enableSearch = false, forcedSearch = false } = {}) {
+  let content = ''
+  for await (const delta of streamChat({ messages, enableSearch, forcedSearch })) {
+    content += delta
+  }
+  return content
+}
+
 async function* streamChat({ messages, enableSearch = false, forcedSearch = false } = {}) {
   const config = providerConfig()
+  if (!config.provider) {
+    throw new Error('缺少 AI_PROVIDER，请在 backend/.env 中配置')
+  }
+  if (!config.model) {
+    throw new Error('缺少 AI_MODEL，请在 backend/.env 中配置')
+  }
+  if (!config.baseUrl) {
+    throw new Error('缺少 AI_BASE_URL，请在 backend/.env 中配置')
+  }
   if (!config.apiKey) {
     throw new Error('缺少 DASHSCOPE_API_KEY，无法调用 AI 服务')
   }
@@ -115,5 +130,6 @@ async function* streamChat({ messages, enableSearch = false, forcedSearch = fals
 }
 
 module.exports = {
+  completeChat,
   streamChat
 }

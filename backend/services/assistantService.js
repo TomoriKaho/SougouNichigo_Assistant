@@ -1,7 +1,7 @@
 const { AssistantConversation } = require('../models/AssistantConversation')
 const { Grammar } = require('../models/Grammar')
 const { Vocabulary } = require('../models/Vocabulary')
-const { streamChat } = require('./aiProvider')
+const { completeChat, streamChat } = require('./aiProvider')
 const { buildMessages, shouldEnableSearch, suggestedQuestions } = require('./promptTemplates')
 
 function decorateConversation(conversation, currentUserId) {
@@ -15,15 +15,46 @@ function decorateConversation(conversation, currentUserId) {
 
 function initialMessageFor(conversation) {
   if (conversation.context_type === 'vocabulary') {
-    return `关于单词「${conversation.context_label || '这个词'}」，你想问些什么？`
+    return `关于单词 **「${conversation.context_label || '这个词'}」**，你想问些什么？`
   }
   if (conversation.context_type === 'grammar') {
-    return `关于文法「${conversation.context_label || '这个文法'}」，你想问些什么？`
+    return `关于文法 **「${conversation.context_label || '这个文法'}」**，你想问些什么？`
   }
   if (conversation.context_type === 'text') {
-    return `关于文章「${conversation.context_label || '这篇文章'}」，你想问些什么？`
+    return `关于文章 **「${conversation.context_label || '这篇文章'}」**，你想问些什么？`
   }
   return '你好呀，我已经准备好啦。你可以直接向我提问。'
+}
+
+function normalizeConversationTitle(title) {
+  const text = String(title || '')
+    .replace(/\s+/g, ' ')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/^["'“”‘’《》【】()（）\[\]{}<>]+|["'“”‘’《》【】()（）\[\]{}<>]+$/g, '')
+    .trim()
+
+  const chars = Array.from(text)
+  return chars.slice(0, 12).join('').trim() || '自由提问'
+}
+
+async function buildFreeConversationTitle(question) {
+  const prompt = [
+    {
+      role: 'system',
+      content: '请把用户问题总结成一个中文标题。要求：12字以内；尽量简洁；不要标点；不要解释；只输出标题。'
+    },
+    {
+      role: 'user',
+      content: String(question || '').trim()
+    }
+  ]
+
+  try {
+    const summary = await completeChat({ messages: prompt, enableSearch: false, forcedSearch: false })
+    return normalizeConversationTitle(summary)
+  } catch (error) {
+    return normalizeConversationTitle(question)
+  }
 }
 
 function createConversationWithInitialMessage(payload, currentUserId) {
@@ -79,8 +110,16 @@ function createGrammarConversation(userId, id) {
   }, userId)
 }
 
-function listConversations({ userId, contextType, contextId, limit, offset }) {
-  const result = AssistantConversation.listVisible({ userId, contextType, contextId, limit, offset })
+function listConversations({ userId, limit, offset }) {
+  const result = AssistantConversation.listOwned({ userId, limit, offset })
+  return {
+    ...result,
+    rows: result.rows.map((item) => decorateConversation(item, userId))
+  }
+}
+
+function listSharedConversations({ userId, contextType, contextId, limit, offset }) {
+  const result = AssistantConversation.listSharedByContext({ userId, contextType, contextId, limit, offset })
   return {
     ...result,
     rows: result.rows.map((item) => decorateConversation(item, userId))
@@ -110,6 +149,13 @@ async function streamAssistantReply({ userId, conversationId, content, templateK
     const error = new Error('请输入问题')
     error.status = 400
     throw error
+  }
+
+  const existingMessages = AssistantConversation.messages(conversation.id)
+  const isFirstUserQuestion = !existingMessages.some((message) => message.role === 'user')
+  if (conversation.context_type === 'none' && isFirstUserQuestion) {
+    const title = await buildFreeConversationTitle(question)
+    AssistantConversation.updateContextLabel(conversation.id, title)
   }
 
   AssistantConversation.addMessage({
@@ -155,11 +201,23 @@ async function streamAssistantReply({ userId, conversationId, content, templateK
   }
 }
 
+function deleteConversation(userId, id) {
+  return AssistantConversation.deleteOwned(id, userId)
+}
+
+function renameConversation(userId, id, title) {
+  const normalized = normalizeConversationTitle(title)
+  return AssistantConversation.updateOwnedContextLabel(id, userId, normalized)
+}
+
 module.exports = {
   createFreeConversation,
   createVocabularyConversation,
   createGrammarConversation,
+  deleteConversation,
   getConversation,
   listConversations,
+  listSharedConversations,
+  renameConversation,
   streamAssistantReply
 }

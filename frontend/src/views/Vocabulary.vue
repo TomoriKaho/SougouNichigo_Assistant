@@ -6,6 +6,17 @@
       </div>
       <div class="toolbar">
         <div class="toolbar-left lexicon-filter-bar">
+          <div class="favorite-filter-control">
+            <span>只看重点</span>
+            <span class="filter-help-tooltip">
+              <span class="filter-help-badge">?</span>
+              <span class="filter-help-tooltip-bubble">由管理员老师标记为重点的单词，作为参考</span>
+            </span>
+            <label class="switch">
+              <input v-model="filters.keyOnly" type="checkbox" />
+              <span class="slider"></span>
+            </label>
+          </div>
           <select v-model.number="filters.textbookId">
             <option v-for="textbook in textbooks" :key="textbook.id" :value="textbook.id">{{ textbook.name }}</option>
           </select>
@@ -69,7 +80,7 @@
           <article v-for="item in rows" :key="item.id" class="lexicon-entry-card" :data-entry-id="item.id">
             <div class="lexicon-entry-main" :class="{ 'is-scrollable': scrollableEntryIds.has(item.id) }">
               <div class="lexicon-card-header">
-                <h3 class="lexicon-entry-term" :title="item.term">
+                <h3 class="lexicon-entry-term" :class="{ 'is-non-key-word': !item.is_key_word }" :title="item.term">
                   <span>{{ item.term }}</span>
                   <span v-if="item.accent" class="lexicon-entry-accent">{{ item.accent }}</span>
                 </h3>
@@ -91,6 +102,15 @@
               </div>
             </div>
             <div class="lexicon-entry-actions admin-vocabulary-entry-actions">
+              <button
+                class="word-study-favorite-button admin-keyword-button"
+                :class="{ 'is-favorite': item.is_key_word }"
+                type="button"
+                :aria-label="item.is_key_word ? '取消重点单词' : '设为重点单词'"
+                @click="toggleKeyWord(item)"
+              >
+                {{ item.is_key_word ? '★' : '☆' }}
+              </button>
               <button class="ghost" @click="openEdit(item)">编辑</button>
               <button class="danger" @click="confirmDelete(item)">删除</button>
             </div>
@@ -261,7 +281,8 @@ const filters = reactive({
   textbookId: 0,
   lessonId: 0,
   unitId: 0,
-  tableType: 'all'
+  tableType: 'all',
+  keyOnly: false
 });
 
 const form = reactive({
@@ -361,6 +382,7 @@ async function refresh() {
         lessonId: filters.lessonId || '',
         unitId: lessonFilterAll.value ? '' : filters.unitId || '',
         tableType: lessonFilterAll.value ? 'all' : filters.tableType,
+        keyOnly: filters.keyOnly ? '1' : '',
         id_order: idOrder.value
       }
     });
@@ -471,6 +493,23 @@ function metadataTags(item) {
   return tags;
 }
 
+async function toggleKeyWord(item) {
+  const nextValue = !item.is_key_word;
+  try {
+    await apiRequest(`/vocabulary/${item.id}/key-word`, {
+      method: nextValue ? 'POST' : 'DELETE'
+    });
+    if (filters.keyOnly && !nextValue) {
+      await refresh();
+    } else {
+      item.is_key_word = nextValue;
+    }
+    showToast(nextValue ? '已设为重点单词' : '已取消重点单词', 'success');
+  } catch (err) {
+    handleApiError(err);
+  }
+}
+
 async function measureCardScrollbars() {
   await nextTick();
   const nextScrollableIds = new Set();
@@ -556,6 +595,11 @@ watch(() => filters.lessonId, () => {
 });
 
 watch(() => [filters.unitId, filters.tableType, keyword.value], () => {
+  page.value = 1;
+  refresh();
+});
+
+watch(() => filters.keyOnly, () => {
   page.value = 1;
   refresh();
 });

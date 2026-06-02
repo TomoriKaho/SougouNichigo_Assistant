@@ -78,11 +78,12 @@ function seedVocabularyFromJson(db) {
       is_onomatopoeia,
       is_loanword,
       has_kanji,
+      is_key_word,
       order_index,
       created_at,
       updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
   `)
 
   let imported = 0
@@ -136,6 +137,7 @@ function seedVocabularyFromJson(db) {
               flags.onomatopoeia ? 1 : 0,
               flags.loanword ? 1 : 0,
               flags.kanjiWord ? 1 : 0,
+              1,
               imported
             )
           })

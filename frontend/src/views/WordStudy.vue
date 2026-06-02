@@ -13,6 +13,17 @@
               <span class="slider"></span>
             </label>
           </div>
+          <div class="favorite-filter-control word-study-inline-favorite-filter">
+            <span>只看重点</span>
+            <span class="filter-help-tooltip">
+              <span class="filter-help-badge">?</span>
+              <span class="filter-help-tooltip-bubble">由管理员老师标记为重点的单词，作为参考</span>
+            </span>
+            <label class="switch">
+              <input v-model="filters.keyOnly" type="checkbox" />
+              <span class="slider"></span>
+            </label>
+          </div>
           <select v-model.number="filters.textbookId">
             <option v-for="textbook in textbooks" :key="textbook.id" :value="textbook.id">{{ textbook.name }}</option>
           </select>
@@ -58,7 +69,7 @@
                 class="lexicon-card-header word-study-card-header"
                 :class="{ 'has-meta': hasWordStudyMeta(item) }"
               >
-                <h3 class="lexicon-entry-term" :title="item.term">
+                <h3 class="lexicon-entry-term" :class="{ 'is-non-key-word': !item.is_key_word }" :title="item.term">
                   <span>{{ item.term }}</span>
                   <span v-if="item.accent" class="lexicon-entry-accent">{{ item.accent }}</span>
                 </h3>
@@ -164,7 +175,8 @@ const filters = reactive({
   lessonScope: 'all',
   unitId: 0,
   tableType: 'all',
-  favoritesOnly: false
+  favoritesOnly: false,
+  keyOnly: false
 });
 
 const textbooks = computed(() => options.value.textbooks || []);
@@ -221,6 +233,7 @@ async function refresh() {
         unitId: lessonFilterAll.value ? '' : filters.unitId || '',
         tableType: lessonFilterAll.value ? 'all' : filters.tableType,
         favoritesOnly: filters.favoritesOnly ? '1' : '',
+        keyOnly: filters.keyOnly ? '1' : '',
         id_order: idOrder.value
       }
     });
@@ -338,6 +351,11 @@ watch(() => [filters.unitId, filters.tableType, keyword.value], () => {
 });
 
 watch(() => filters.favoritesOnly, () => {
+  page.value = 1;
+  refresh();
+});
+
+watch(() => filters.keyOnly, () => {
   page.value = 1;
   refresh();
 });

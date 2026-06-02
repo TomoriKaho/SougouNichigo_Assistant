@@ -77,7 +77,11 @@
               :class="`assistant-resize-${direction}`"
               @pointerdown.stop.prevent="startAssistantResize(direction, $event)"
             ></div>
-            <div class="assistant-chat-header" @pointerdown.stop.prevent="startAssistantDrag">
+            <div
+              class="assistant-chat-header"
+              @pointerdown.stop.prevent="startAssistantDrag"
+              @dblclick.stop.prevent="toggleAssistantPanelMaximize"
+            >
               <div class="assistant-chat-title-group">
                 <img class="assistant-chat-avatar" :src="assistantCurrentImage" alt="" />
                 <div>
@@ -88,81 +92,196 @@
               <button class="ghost assistant-close-button" type="button" @click="closeAssistant">关闭</button>
             </div>
 
-            <div v-if="assistantHistoryOpen" class="assistant-history-panel">
+            <div v-if="assistantHistoryOpen" class="assistant-history-screen">
               <div class="assistant-history-header">
-                <strong>对话历史</strong>
-                <button class="ghost" type="button" @click="loadAssistantHistory" :disabled="assistantHistoryLoading">刷新</button>
-              </div>
-              <div v-if="assistantHistoryError" class="assistant-history-error">{{ assistantHistoryError }}</div>
-              <div v-else-if="assistantHistoryLoading" class="assistant-history-empty">加载中...</div>
-              <div v-else-if="assistantHistoryRows.length" class="assistant-history-list">
-                <button
-                  v-for="item in assistantHistoryRows"
-                  :key="item.id"
-                  class="assistant-history-item"
-                  :class="{ active: assistantActiveConversation?.id === item.id }"
-                  type="button"
-                  @click="loadAssistantConversation(item.id)"
-                >
-                  <span>{{ assistantConversationTitle(item) }}</span>
-                  <small>{{ item.owner_username || '-' }} · {{ formatAssistantTime(item.updated_at) }}</small>
-                  <em v-if="item.last_message_excerpt">{{ item.last_message_excerpt }}</em>
-                </button>
-              </div>
-              <div v-else class="assistant-history-empty">暂无对话历史</div>
-            </div>
-
-            <div v-if="assistantSuggestedQuestions.length && !assistantReadOnly" class="assistant-suggestions">
-              <button
-                v-for="question in assistantSuggestedQuestions"
-                :key="question.key"
-                class="ghost"
-                type="button"
-                :disabled="assistantBusy"
-                @click="sendAssistantQuickQuestion(question)"
-              >
-                {{ question.label }}
-              </button>
-            </div>
-
-            <div v-if="assistantReadOnly" class="assistant-readonly-note">
-              正在查看共享历史，不能在该对话中继续提问。
-            </div>
-
-            <div class="assistant-chat-body">
-              <div
-                v-for="message in assistantMessages"
-                :key="message.id"
-                class="assistant-message"
-                :class="`assistant-message-${message.role}`"
-              >
-                <div class="assistant-message-bubble">
-                  <template v-if="message.role === 'assistant' && message.phase === 'thinking'">
-                    <span class="assistant-thinking-text">思考中...</span>
-                  </template>
-                  <template v-else>
-                    {{ message.content }}
-                  </template>
+                <strong>{{ assistantHistoryTitle }}</strong>
+                <div class="assistant-history-header-actions">
+                  <button class="ghost" type="button" @click="refreshAssistantHistoryView" :disabled="assistantHistoryLoading">刷新</button>
+                  <button class="ghost" type="button" @click="handleAssistantHistoryBack">返回</button>
                 </div>
               </div>
+              <div class="assistant-history-body">
+                <div v-if="assistantHistoryError" class="assistant-history-error">{{ assistantHistoryError }}</div>
+                <div v-else-if="assistantHistoryLoading" class="assistant-history-empty">加载中...</div>
+                <div v-else-if="assistantHistoryRows.length" class="assistant-history-list">
+                  <div
+                    v-for="item in assistantHistoryRows"
+                    :key="item.id"
+                    class="assistant-history-item"
+                    :class="{ active: assistantActiveConversation?.id === item.id }"
+                  >
+                    <button
+                      class="assistant-history-item-main"
+                      type="button"
+                      @click="loadAssistantConversation(item.id)"
+                    >
+                      <div class="assistant-history-item-header">
+                        <template v-if="assistantHistoryMode === 'own' && assistantRenameConversationId === item.id">
+                          <input
+                            ref="assistantRenameInputRef"
+                            v-model.trim="assistantRenameDraft"
+                            class="assistant-history-rename-input"
+                            type="text"
+                            maxlength="12"
+                            @click.stop
+                            @keydown.enter.stop.prevent="submitAssistantConversationRename(item)"
+                            @keydown.esc.stop.prevent="cancelAssistantConversationRename"
+                            @blur="submitAssistantConversationRename(item)"
+                          />
+                        </template>
+                        <span
+                          v-if="assistantHistoryMode === 'own'"
+                          class="assistant-history-title-trigger"
+                          :title="assistantConversationTitle(item)"
+                          @click.stop.prevent="startAssistantConversationRename(item)"
+                        >
+                          {{ assistantConversationTitle(item) }}
+                        </span>
+                        <span
+                          v-else
+                          :title="assistantConversationTitle(item)"
+                        >
+                          {{ assistantConversationTitle(item) }}
+                        </span>
+                        <small>{{ formatAssistantTime(item.updated_at) }}</small>
+                      </div>
+                      <em v-if="item.last_message_excerpt">{{ item.last_message_excerpt }}</em>
+                    </button>
+                    <button
+                      v-if="assistantHistoryMode === 'own'"
+                      class="assistant-history-item-delete"
+                      type="button"
+                      @click="deleteAssistantConversation(item)"
+                    >
+                      删除
+                    </button>
+                  </div>
+                </div>
+                <div v-else class="assistant-history-empty">{{ assistantHistoryEmptyText }}</div>
+              </div>
             </div>
 
-            <form class="assistant-chat-composer" @submit.prevent="submitAssistantMessage">
-              <textarea
-                v-model.trim="assistantInput"
-                rows="3"
-                :disabled="assistantBusy || assistantReadOnly"
-                placeholder="输入你想问的问题..."
-              ></textarea>
-              <div class="assistant-chat-actions">
-                <button class="ghost assistant-history-toggle" type="button" @click="toggleAssistantHistory">
-                  对话历史
-                </button>
-                <button type="submit" :disabled="assistantBusy || assistantReadOnly || !assistantInput.trim()">
-                  {{ assistantBusy ? '处理中...' : '发送' }}
+            <div v-else class="assistant-chat-screen">
+              <div v-if="assistantReadOnly" class="assistant-readonly-note">
+                <span>正在查看共享历史</span>
+                <button
+                  class="ghost assistant-readonly-return"
+                  type="button"
+                  @click="returnToAssistantSharedHistory"
+                >
+                  返回
                 </button>
               </div>
-            </form>
+
+              <div ref="assistantChatBodyRef" class="assistant-chat-body">
+                <div
+                  v-for="message in assistantMessages"
+                  :key="message.id"
+                  class="assistant-message"
+                  :class="`assistant-message-${message.role}`"
+                >
+                  <div class="assistant-message-stack">
+                    <div class="assistant-message-bubble">
+                      <template v-if="message.role === 'assistant' && message.phase === 'thinking'">
+                        <span class="assistant-thinking-text">思考中...</span>
+                      </template>
+                      <template v-else>
+                        <div
+                          class="assistant-message-markdown"
+                          v-html="renderAssistantMarkdown(message.content)"
+                        ></div>
+                      </template>
+                    </div>
+                    <div class="assistant-message-meta">
+                      <template v-if="message.role === 'assistant'">
+                        <button
+                          class="assistant-message-copy"
+                          type="button"
+                          aria-label="复制助手消息"
+                          :disabled="!message.content"
+                          @click="copyAssistantMessage(message.content)"
+                        >
+                          <span aria-hidden="true">⧉</span>
+                        </button>
+                        <time>{{ formatAssistantMessageClock(message.created_at) }}</time>
+                      </template>
+                      <template v-else>
+                        <time>{{ formatAssistantMessageClock(message.created_at) }}</time>
+                        <button
+                          class="assistant-message-copy"
+                          type="button"
+                          aria-label="复制用户消息"
+                          :disabled="!message.content"
+                          @click="copyAssistantMessage(message.content)"
+                        >
+                          <span aria-hidden="true">⧉</span>
+                        </button>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  v-if="(assistantSuggestedQuestions.length || assistantCanViewSharedHistory) && !assistantReadOnly && !assistantBusy"
+                  class="assistant-message assistant-message-assistant assistant-message-suggestions"
+                >
+                  <div class="assistant-message-stack assistant-suggestion-stack">
+                    <div v-if="assistantSuggestedQuestions.length" class="assistant-suggestion-caption">你也可以直接点下面的问题：</div>
+                    <div v-if="assistantSuggestedQuestions.length" class="assistant-inline-suggestions">
+                      <button
+                        v-for="question in assistantSuggestedQuestions"
+                        :key="question.key"
+                        class="ghost"
+                        type="button"
+                        :disabled="assistantBusy"
+                        @click="sendAssistantQuickQuestion(question)"
+                      >
+                        {{ question.label }}
+                      </button>
+                    </div>
+                    <div v-if="assistantCanViewSharedHistory" class="assistant-suggestion-alt">
+                      <span class="assistant-suggestion-caption assistant-suggestion-alt-label">或是</span>
+                      <button
+                        class="ghost assistant-suggestion-alt-button"
+                        type="button"
+                        :disabled="assistantBusy || assistantHistoryLoading"
+                        @click="openAssistantSharedHistory"
+                      >
+                        看看其他同学的提问历史
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <form class="assistant-chat-composer" @submit.prevent="submitAssistantMessage">
+                <textarea
+                  v-model.trim="assistantInput"
+                  :class="{ 'assistant-input-invalid': assistantInputTooLong }"
+                  rows="3"
+                  :disabled="assistantBusy || assistantReadOnly"
+                  placeholder="输入你想问的问题
+按 Enter 键发送，Shift+Enter 键换行"
+                  @keydown="handleAssistantComposerKeydown"
+                ></textarea>
+                <div class="assistant-chat-actions">
+                  <button
+                    class="ghost assistant-history-toggle"
+                    type="button"
+                    :disabled="assistantBusy"
+                    @click="startAssistantNewConversation"
+                  >
+                    新对话
+                  </button>
+                  <button class="ghost assistant-history-toggle" type="button" @click="toggleAssistantHistory">
+                    我的对话历史
+                  </button>
+                  <button type="submit" :disabled="assistantBusy || assistantReadOnly || !assistantInput.trim()">
+                    {{ assistantBusy ? '处理中...' : '发送' }}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
 
           <button
@@ -216,6 +335,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import MarkdownIt from 'markdown-it';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import assistantHappyImage from '../assistant/assistant-happy.webp';
 import assistantNormalImage from '../assistant/assistant-normal.webp';
@@ -229,6 +349,19 @@ import { apiRequest, ApiError, getApiRoot, getAuthToken } from '../utils/apiClie
 const route = useRoute();
 const router = useRouter();
 const { state, logout, isDev, isPrivileged, isUserMode, isTeacher } = useAuth();
+const markdownRenderer = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true
+});
+const defaultLinkOpenRule = markdownRenderer.renderer.rules.link_open || ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options));
+
+markdownRenderer.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+  const token = tokens[idx];
+  token.attrSet('target', '_blank');
+  token.attrSet('rel', 'noopener noreferrer');
+  return defaultLinkOpenRule(tokens, idx, options, env, self);
+};
 const contentRef = ref(null);
 const sidebarCollapsed = ref(false);
 const feedbackOpen = ref(false);
@@ -245,14 +378,7 @@ const assistantOpen = ref(false);
 const assistantInput = ref('');
 const assistantState = ref('idle');
 const assistantSleepy = ref(false);
-const assistantMessages = ref([
-  {
-    id: 1,
-    role: 'assistant',
-    content: '你好呀，我已经准备好啦。你可以直接向我提问。',
-    phase: 'done'
-  }
-]);
+const assistantMessages = ref([createAssistantWelcomeMessage()]);
 let assistantMessageId = 2;
 let assistantThinkingTimer = null;
 let assistantReplyTimer = null;
@@ -263,20 +389,35 @@ let assistantSidebarAdjustTimer = null;
 const assistantResizeDirections = ['n', 'e', 's', 'w', 'ne', 'nw', 'se', 'sw'];
 const assistantOrbSize = 96;
 const assistantOrbDefaultOffset = { right: 38, bottom: 26 };
-const assistantDefaultPanelSize = { width: 380, height: 520 };
+const assistantDefaultPanelSize = { width: 360, height: 620 };
 const assistantOrbPosition = reactive({ left: 0, top: 0 });
 const assistantOrbReady = ref(false);
 const assistantOrbDragging = ref(false);
 const assistantOrbDragged = ref(false);
 const assistantActiveConversation = ref(null);
 const assistantHistoryOpen = ref(false);
+const assistantHistoryMode = ref('own');
 const assistantHistoryLoading = ref(false);
 const assistantHistoryRows = ref([]);
 const assistantHistoryError = ref('');
+const assistantSharedHistoryAvailable = ref(false);
+const assistantRenameConversationId = ref(null);
+const assistantRenameDraft = ref('');
+const assistantRenameInputRef = ref(null);
+const assistantOwnedConversationSnapshot = ref(null);
+let assistantSharedHistoryCheckToken = 0;
 const assistantPanelPosition = reactive({ left: 0, top: 0 });
 const assistantPanelSize = reactive({ width: assistantDefaultPanelSize.width, height: assistantDefaultPanelSize.height });
 const assistantPanelReady = ref(false);
 const assistantPanelSnapback = ref(false);
+const assistantPanelMaximized = ref(false);
+const assistantPanelRestoreState = reactive({
+  left: 0,
+  top: 0,
+  width: assistantDefaultPanelSize.width,
+  height: assistantDefaultPanelSize.height,
+  valid: false
+});
 const assistantOrbInteraction = reactive({
   pointerId: null,
   pending: false,
@@ -353,8 +494,17 @@ const assistantStatusText = computed(() => {
   if (assistantSleepy.value) return '我先休息一下';
   return '你的智能日语学习助手';
 });
+const assistantInputLimit = 1000;
+const assistantInputTooLong = computed(() => assistantInput.value.length > assistantInputLimit);
 const assistantSuggestedQuestions = computed(() => assistantActiveConversation.value?.suggested_questions || []);
 const assistantReadOnly = computed(() => Boolean(assistantActiveConversation.value?.is_read_only));
+const assistantHasContext = computed(() => {
+  const conversation = assistantActiveConversation.value;
+  return Boolean(conversation && conversation.context_type && conversation.context_type !== 'none' && conversation.context_id);
+});
+const assistantCanViewSharedHistory = computed(() => assistantHasContext.value && assistantSharedHistoryAvailable.value);
+const assistantHistoryTitle = computed(() => assistantHistoryMode.value === 'shared' ? '其他用户聊天历史' : '对话历史');
+const assistantHistoryEmptyText = computed(() => assistantHistoryMode.value === 'shared' ? '暂无其他用户聊天历史' : '暂无对话历史');
 const assistantOrbStyle = computed(() => ({
   left: `${assistantOrbPosition.left}px`,
   top: `${assistantOrbPosition.top}px`
@@ -375,6 +525,7 @@ const assistantPanelStyle = computed(() => ({
   width: `${assistantPanelSize.width}px`,
   height: `${assistantPanelSize.height}px`
 }));
+const assistantChatBodyRef = ref(null);
 
 function showToast(message, type = 'info') {
   toast.message = message;
@@ -385,11 +536,49 @@ function showToast(message, type = 'info') {
   }, 1600);
 }
 
+function emphasizeAssistantContextPrompt(content) {
+  const text = String(content || '');
+  return text
+    .replace(
+      /关于(单词|文法|文章)\*\*「([^」]+)」\*\*，你想问些什么？/g,
+      '关于$1 **「$2」**，你想问些什么？'
+    )
+    .replace(
+      /关于(单词|文法|文章)「([^」]+)」，你想问些什么？/g,
+      '关于$1 **「$2」**，你想问些什么？'
+    );
+}
+
+function renderAssistantMarkdown(content) {
+  return markdownRenderer.render(emphasizeAssistantContextPrompt(content));
+}
+
+function createAssistantWelcomeMessage() {
+  return {
+    id: 1,
+    role: 'assistant',
+    content: '你好呀，我已经准备好啦。你可以直接向我提问。',
+    created_at: new Date().toISOString(),
+    phase: 'done'
+  };
+}
+
+function scrollAssistantChatToBottom() {
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      const element = assistantChatBodyRef.value;
+      if (!element) return;
+      element.scrollTop = element.scrollHeight;
+    });
+  });
+}
+
 function mapAssistantMessage(message) {
   return {
     id: message.id || `${message.role}-${Date.now()}-${Math.random()}`,
     role: message.role === 'user' ? 'user' : 'assistant',
     content: message.content || '',
+    created_at: message.created_at || '',
     phase: 'done'
   };
 }
@@ -406,6 +595,49 @@ function setAssistantConversation(payload) {
   assistantState.value = 'idle';
 }
 
+function resetAssistantDraftConversation() {
+  assistantActiveConversation.value = null;
+  assistantMessages.value = [createAssistantWelcomeMessage()];
+  assistantMessageId = 2;
+  assistantState.value = 'idle';
+  assistantInput.value = '';
+}
+
+function recalculateAssistantMessageId() {
+  const maxMessageId = assistantMessages.value.reduce((max, message) => {
+    const id = Number(message.id);
+    return Number.isFinite(id) ? Math.max(max, id) : max;
+  }, 1);
+  assistantMessageId = maxMessageId + 1;
+}
+
+function captureAssistantOwnedConversationSnapshot() {
+  assistantOwnedConversationSnapshot.value = {
+    conversation: assistantActiveConversation.value ? { ...assistantActiveConversation.value } : null,
+    messages: assistantMessages.value.map((message) => ({ ...message })),
+    input: assistantInput.value
+  };
+}
+
+function restoreAssistantOwnedConversationSnapshot() {
+  const snapshot = assistantOwnedConversationSnapshot.value;
+  assistantOwnedConversationSnapshot.value = null;
+  assistantHistoryOpen.value = false;
+
+  if (!snapshot) {
+    resetAssistantDraftConversation();
+    scrollAssistantChatToBottom();
+    return;
+  }
+
+  assistantActiveConversation.value = snapshot.conversation ? { ...snapshot.conversation } : null;
+  assistantMessages.value = snapshot.messages.map((message) => ({ ...message }));
+  assistantInput.value = snapshot.input || '';
+  assistantState.value = 'idle';
+  recalculateAssistantMessageId();
+  scrollAssistantChatToBottom();
+}
+
 function assistantConversationTitle(item) {
   if (!item) return '自由提问';
   if (item.context_type === 'vocabulary') return `单词：${item.context_label || '-'}`;
@@ -418,19 +650,51 @@ function formatAssistantTime(value) {
   return String(value || '').replace(/:\d{2}$/, '');
 }
 
-function assistantHistoryParams() {
-  const conversation = assistantActiveConversation.value;
-  if (conversation?.context_type && conversation.context_type !== 'none' && conversation.context_id) {
-    return {
-      context_type: conversation.context_type,
-      context_id: conversation.context_id
-    };
+function formatAssistantMessageClock(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const match = text.match(/(\d{2}:\d{2})(?::\d{2})?$/);
+  if (match) return match[1];
+
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return text;
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function validateAssistantInputLength() {
+  if (!assistantInputTooLong.value) return true;
+  showToast(`输入内容不能超过 ${assistantInputLimit} 字`, 'error');
+  return false;
+}
+
+async function copyAssistantMessage(content) {
+  const text = String(content || '');
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('已复制', 'success');
+  } catch (error) {
+    showToast('复制失败', 'error');
   }
-  return {};
+}
+
+function currentAssistantContextParams() {
+  const conversation = assistantActiveConversation.value;
+  if (!conversation?.context_type || conversation.context_type === 'none' || !conversation.context_id) {
+    return null;
+  }
+  return {
+    context_type: conversation.context_type,
+    context_id: conversation.context_id
+  };
 }
 
 async function ensureAssistantConversation() {
   if (assistantActiveConversation.value && !assistantReadOnly.value) return assistantActiveConversation.value;
+  return createAssistantConversation();
+}
+
+async function createAssistantConversation() {
   const data = await apiRequest('/api/user/assistant/conversations', {
     method: 'POST',
     body: { context_type: 'none' },
@@ -450,16 +714,21 @@ async function loadAssistantConversation(id) {
 }
 
 async function loadAssistantHistory() {
+  const mode = assistantHistoryMode.value;
   assistantHistoryLoading.value = true;
   assistantHistoryError.value = '';
   try {
-    const data = await apiRequest('/api/user/assistant/conversations', {
-      params: {
-        limit: 80,
-        ...assistantHistoryParams()
-      },
-      timeout: 30000
-    });
+    const endpoint = mode === 'shared' ? '/api/user/assistant/conversations/shared' : '/api/user/assistant/conversations';
+    const params = { limit: 80 };
+    if (mode === 'shared') {
+      const contextParams = currentAssistantContextParams();
+      if (!contextParams) {
+        assistantHistoryRows.value = [];
+        return;
+      }
+      Object.assign(params, contextParams);
+    }
+    const data = await apiRequest(endpoint, { params, timeout: 30000 });
     assistantHistoryRows.value = data.rows || [];
   } catch (err) {
     assistantHistoryError.value = err instanceof ApiError ? err.message : '加载失败';
@@ -469,9 +738,155 @@ async function loadAssistantHistory() {
 }
 
 async function toggleAssistantHistory() {
-  assistantHistoryOpen.value = !assistantHistoryOpen.value;
   if (assistantHistoryOpen.value) {
-    await loadAssistantHistory();
+    closeAssistantHistory();
+    return;
+  }
+  assistantHistoryMode.value = 'own';
+  assistantHistoryOpen.value = true;
+  await loadAssistantHistory();
+}
+
+function closeAssistantHistory() {
+  assistantHistoryOpen.value = false;
+  cancelAssistantConversationRename();
+  if (assistantHistoryMode.value === 'own') {
+    scrollAssistantChatToBottom();
+  }
+}
+
+function handleAssistantHistoryBack() {
+  if (assistantHistoryMode.value === 'shared') {
+    restoreAssistantOwnedConversationSnapshot();
+    return;
+  }
+  closeAssistantHistory();
+}
+
+async function refreshAssistantHistoryView() {
+  await loadAssistantHistory();
+}
+
+async function openAssistantSharedHistory() {
+  if (!assistantCanViewSharedHistory.value) return;
+  if (!assistantReadOnly.value) {
+    captureAssistantOwnedConversationSnapshot();
+  }
+  assistantHistoryMode.value = 'shared';
+  assistantHistoryOpen.value = true;
+  await loadAssistantHistory();
+}
+
+async function returnToAssistantSharedHistory() {
+  await openAssistantSharedHistory();
+}
+
+async function startAssistantNewConversation() {
+  if (assistantBusy.value) {
+    showToast('AI 正在回复中', 'error');
+    return;
+  }
+
+  try {
+    assistantOwnedConversationSnapshot.value = null;
+    await createAssistantConversation();
+    assistantHistoryRows.value = [];
+    assistantHistoryError.value = '';
+    assistantInput.value = '';
+  } catch (err) {
+    showToast(err instanceof ApiError ? err.message : '创建新对话失败', 'error');
+  }
+}
+
+async function deleteAssistantConversation(item) {
+  if (!item?.id) return;
+  if (!window.confirm('确认删除这条对话历史？')) return;
+
+  try {
+    await apiRequest(`/api/user/assistant/conversations/${item.id}`, {
+      method: 'DELETE',
+      timeout: 30000
+    });
+    if (Number(assistantActiveConversation.value?.id) === Number(item.id)) {
+      resetAssistantDraftConversation();
+    }
+    assistantHistoryRows.value = assistantHistoryRows.value.filter((row) => Number(row.id) !== Number(item.id));
+    showToast('已删除', 'success');
+  } catch (err) {
+    showToast(err instanceof ApiError ? err.message : '删除失败', 'error');
+  }
+}
+
+function cancelAssistantConversationRename() {
+  assistantRenameConversationId.value = null;
+  assistantRenameDraft.value = '';
+}
+
+function startAssistantConversationRename(item) {
+  if (!item?.id || assistantHistoryMode.value !== 'own') return;
+  assistantRenameConversationId.value = item.id;
+  assistantRenameDraft.value = assistantConversationTitle(item);
+  nextTick(() => {
+    const input = assistantRenameInputRef.value;
+    if (input?.focus) {
+      input.focus();
+      input.select?.();
+    }
+  });
+}
+
+async function submitAssistantConversationRename(item) {
+  if (!item?.id || assistantRenameConversationId.value !== item.id) return;
+  const title = assistantRenameDraft.value.trim();
+  if (!title) {
+    showToast('标题不能为空', 'error');
+    return;
+  }
+
+  try {
+    const data = await apiRequest(`/api/user/assistant/conversations/${item.id}/title`, {
+      method: 'PATCH',
+      body: { title },
+      timeout: 30000
+    });
+    assistantHistoryRows.value = assistantHistoryRows.value.map((row) => (
+      Number(row.id) === Number(item.id) ? { ...row, ...data.conversation } : row
+    ));
+    if (Number(assistantActiveConversation.value?.id) === Number(item.id)) {
+      assistantActiveConversation.value = {
+        ...assistantActiveConversation.value,
+        ...data.conversation
+      };
+    }
+    cancelAssistantConversationRename();
+    showToast('已重命名', 'success');
+  } catch (err) {
+    showToast(err instanceof ApiError ? err.message : '重命名失败', 'error');
+  }
+}
+
+async function refreshAssistantSharedHistoryAvailability() {
+  const token = ++assistantSharedHistoryCheckToken;
+  const contextParams = currentAssistantContextParams();
+
+  if (!contextParams) {
+    assistantSharedHistoryAvailable.value = false;
+    return;
+  }
+
+  try {
+    const data = await apiRequest('/api/user/assistant/conversations/shared', {
+      params: {
+        ...contextParams,
+        limit: 1
+      },
+      timeout: 30000
+    });
+    if (token !== assistantSharedHistoryCheckToken) return;
+    assistantSharedHistoryAvailable.value = Number(data.total || 0) > 0;
+  } catch (err) {
+    if (token !== assistantSharedHistoryCheckToken) return;
+    assistantSharedHistoryAvailable.value = false;
   }
 }
 
@@ -555,6 +970,12 @@ async function streamAssistantMessage({ conversationId, content, templateKey, fo
     if (payload.event === 'done') {
       if (payload.data?.conversation) {
         assistantActiveConversation.value = payload.data.conversation;
+      }
+      if (payload.data?.message?.id) {
+        replyMessage.id = payload.data.message.id;
+      }
+      if (payload.data?.message?.created_at) {
+        replyMessage.created_at = payload.data.message.created_at;
       }
       const finalContent = payload.data?.message?.content || replyMessage.content;
       if (!receivedDelta && finalContent) {
@@ -681,9 +1102,37 @@ function clampAssistantPanel() {
   assistantPanelPosition.top = Math.min(Math.max(assistantPanelPosition.top, margin), maxTop);
 }
 
+function assistantMaximizedPlacement() {
+  const margin = 12;
+  const metrics = assistantContentMetrics();
+  return {
+    left: margin,
+    top: margin,
+    width: Math.max(320, metrics.width - margin * 2),
+    height: Math.max(360, metrics.height - margin * 2)
+  };
+}
+
+function applyAssistantMaximizedPlacement() {
+  const target = assistantMaximizedPlacement();
+  assistantPanelReady.value = true;
+  assistantPanelPosition.left = target.left;
+  assistantPanelPosition.top = target.top;
+  assistantPanelSize.width = target.width;
+  assistantPanelSize.height = target.height;
+}
+
+function handleAssistantPanelBoundsChange() {
+  if (assistantPanelMaximized.value) {
+    applyAssistantMaximizedPlacement();
+    return;
+  }
+  clampAssistantPanel();
+}
+
 function ensureAssistantPanelPosition() {
   if (assistantPanelReady.value) {
-    clampAssistantPanel();
+    handleAssistantPanelBoundsChange();
     return;
   }
 
@@ -700,6 +1149,8 @@ function resetAssistantPanelState() {
   assistantPanelPosition.top = 0;
   assistantPanelSize.width = assistantDefaultPanelSize.width;
   assistantPanelSize.height = assistantDefaultPanelSize.height;
+  assistantPanelMaximized.value = false;
+  assistantPanelRestoreState.valid = false;
 }
 
 function clearAssistantSleepTimer() {
@@ -739,6 +1190,7 @@ function preserveAssistantOrbViewportPosition(previousContentLeft) {
     const nextContentLeft = contentRef.value?.getBoundingClientRect?.().left || 0;
     assistantOrbPosition.left = previousViewportLeft - nextContentLeft;
     clampAssistantOrb();
+    handleAssistantPanelBoundsChange();
     assistantSidebarAdjustTimer = null;
   }, 190);
 }
@@ -776,6 +1228,8 @@ async function openAssistant() {
   ensureAssistantOrbPosition();
   clearAssistantPanelSnapbackTimer();
   assistantPanelSnapback.value = false;
+  assistantPanelMaximized.value = false;
+  assistantPanelRestoreState.valid = false;
   assistantPanelSize.width = assistantDefaultPanelSize.width;
   assistantPanelSize.height = assistantDefaultPanelSize.height;
   assistantPanelReady.value = true;
@@ -807,8 +1261,18 @@ async function openAssistant() {
   });
 }
 
+async function openAssistantFromOrb() {
+  assistantOwnedConversationSnapshot.value = null;
+  assistantHistoryOpen.value = false;
+  assistantHistoryRows.value = [];
+  assistantHistoryError.value = '';
+  resetAssistantDraftConversation();
+  await openAssistant();
+}
+
 function closeAssistant() {
   assistantOpen.value = false;
+  assistantHistoryOpen.value = false;
   stopAssistantInteraction();
   cancelAssistantOrbPress();
   assistantPanelSnapback.value = false;
@@ -837,6 +1301,48 @@ function startAssistantDrag(event) {
 
 function startAssistantResize(direction, event) {
   beginAssistantInteraction('resize', direction, event);
+}
+
+function transitionAssistantPanelTo(applyChange) {
+  clearAssistantPanelSnapbackTimer();
+  assistantPanelSnapback.value = true;
+  requestAnimationFrame(() => {
+    applyChange();
+    assistantPanelSnapbackTimer = setTimeout(() => {
+      assistantPanelSnapback.value = false;
+      assistantPanelSnapbackTimer = null;
+    }, 320);
+  });
+}
+
+function toggleAssistantPanelMaximize(event) {
+  if (event?.target?.closest?.('button')) return;
+  stopAssistantInteraction();
+
+  if (assistantPanelMaximized.value) {
+    transitionAssistantPanelTo(() => {
+      const fallback = assistantDefaultPanelPlacement();
+      assistantPanelPosition.left = assistantPanelRestoreState.valid ? assistantPanelRestoreState.left : fallback.left;
+      assistantPanelPosition.top = assistantPanelRestoreState.valid ? assistantPanelRestoreState.top : fallback.top;
+      assistantPanelSize.width = assistantPanelRestoreState.valid ? assistantPanelRestoreState.width : assistantDefaultPanelSize.width;
+      assistantPanelSize.height = assistantPanelRestoreState.valid ? assistantPanelRestoreState.height : assistantDefaultPanelSize.height;
+      assistantPanelMaximized.value = false;
+      assistantPanelRestoreState.valid = false;
+      clampAssistantPanel();
+    });
+    return;
+  }
+
+  assistantPanelRestoreState.left = assistantPanelPosition.left;
+  assistantPanelRestoreState.top = assistantPanelPosition.top;
+  assistantPanelRestoreState.width = assistantPanelSize.width;
+  assistantPanelRestoreState.height = assistantPanelSize.height;
+  assistantPanelRestoreState.valid = true;
+
+  transitionAssistantPanelTo(() => {
+    assistantPanelMaximized.value = true;
+    applyAssistantMaximizedPlacement();
+  });
 }
 
 function startAssistantOrbPress(event) {
@@ -902,7 +1408,7 @@ function finishAssistantOrbPress(event) {
   }
 
   if (shouldOpen) {
-    openAssistant();
+    openAssistantFromOrb();
   }
 }
 
@@ -922,6 +1428,11 @@ function handleAssistantPointerMove(event) {
 
   const dx = event.clientX - assistantInteraction.startX;
   const dy = event.clientY - assistantInteraction.startY;
+
+  if (assistantPanelMaximized.value && Math.hypot(dx, dy) > 2) {
+    assistantPanelMaximized.value = false;
+    assistantPanelRestoreState.valid = false;
+  }
 
   if (assistantInteraction.mode === 'drag') {
     assistantPanelPosition.left = assistantInteraction.startLeft + dx;
@@ -1036,12 +1547,14 @@ async function sendAssistantMessage({ content, templateKey, forceWebSearch } = {
     id: assistantMessageId++,
     role: 'user',
     content: question,
+    created_at: new Date().toISOString(),
     phase: 'done'
   };
   const replyMessage = {
     id: assistantMessageId++,
     role: 'assistant',
     content: '',
+    created_at: new Date().toISOString(),
     phase: 'thinking'
   };
 
@@ -1075,7 +1588,14 @@ async function sendAssistantMessage({ content, templateKey, forceWebSearch } = {
 }
 
 function submitAssistantMessage() {
+  if (!validateAssistantInputLength()) return;
   sendAssistantMessage({ content: assistantInput.value });
+}
+
+function handleAssistantComposerKeydown(event) {
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+  event.preventDefault();
+  submitAssistantMessage();
 }
 
 function sendAssistantQuickQuestion(question) {
@@ -1094,6 +1614,7 @@ async function openAssistantContext(contextType, id) {
   }
 
   try {
+    assistantOwnedConversationSnapshot.value = null;
     const data = await apiRequest(`/api/user/assistant/context/${contextType}/${id}`, {
       method: 'POST',
       timeout: 30000
@@ -1161,7 +1682,7 @@ function handleLogout() {
 
 onMounted(() => {
   ensureAssistantOrbPosition();
-  window.addEventListener('resize', clampAssistantPanel);
+  window.addEventListener('resize', handleAssistantPanelBoundsChange);
   window.addEventListener('resize', clampAssistantOrb);
   window.addEventListener('assistant:context', handleAssistantContextEvent);
 });
@@ -1193,11 +1714,19 @@ watch(assistantBusy, (busy) => {
   scheduleAssistantSleep();
 });
 
+watch(
+  () => [assistantActiveConversation.value?.context_type, assistantActiveConversation.value?.context_id, assistantActiveConversation.value?.id],
+  () => {
+    refreshAssistantSharedHistoryAvailability();
+  },
+  { immediate: true }
+);
+
 onBeforeUnmount(() => {
   clearAssistantTimers();
   stopAssistantInteraction();
   cancelAssistantOrbPress();
-  window.removeEventListener('resize', clampAssistantPanel);
+  window.removeEventListener('resize', handleAssistantPanelBoundsChange);
   window.removeEventListener('resize', clampAssistantOrb);
   window.removeEventListener('assistant:context', handleAssistantContextEvent);
 });

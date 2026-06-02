@@ -190,6 +190,14 @@ router.post('/assistant/conversations', authMiddleware, (req, res) => {
 router.get('/assistant/conversations', authMiddleware, (req, res) => {
   res.json(assistantService.listConversations({
     userId: req.user.id,
+    limit: parseLimit(req.query.limit, 50, 200),
+    offset: parseOffset(req.query.offset)
+  }))
+})
+
+router.get('/assistant/conversations/shared', authMiddleware, (req, res) => {
+  res.json(assistantService.listSharedConversations({
+    userId: req.user.id,
     contextType: req.query.context_type || req.query.contextType,
     contextId: req.query.context_id || req.query.contextId,
     limit: parseLimit(req.query.limit, 50, 200),
@@ -201,6 +209,20 @@ router.get('/assistant/conversations/:id', authMiddleware, (req, res) => {
   const result = assistantService.getConversation(req.user.id, req.params.id)
   if (!result) return res.status(404).json({ error: '对话不存在' })
   res.json(result)
+})
+
+router.delete('/assistant/conversations/:id', authMiddleware, (req, res) => {
+  const deleted = assistantService.deleteConversation(req.user.id, req.params.id)
+  if (!deleted) return res.status(404).json({ error: '对话不存在' })
+  res.json({ success: true })
+})
+
+router.patch('/assistant/conversations/:id/title', authMiddleware, (req, res) => {
+  const title = String(req.body.title || '').trim()
+  if (!title) return res.status(400).json({ error: '标题不能为空' })
+  const conversation = assistantService.renameConversation(req.user.id, req.params.id, title)
+  if (!conversation) return res.status(404).json({ error: '对话不存在' })
+  res.json({ success: true, conversation })
 })
 
 router.post('/assistant/conversations/:id/messages/stream', authMiddleware, async (req, res) => {
@@ -292,6 +314,7 @@ router.get('/vocabulary', authMiddleware, (req, res) => {
     keyword: req.query.q || req.query.keyword || '',
     userId: req.user.id,
     favoritesOnly: parseFlag(req.query.favoritesOnly || req.query.favorites_only),
+    keyOnly: parseFlag(req.query.keyOnly || req.query.key_only),
     textbookId: req.query.textbookId,
     lessonId: req.query.lessonId,
     lessonNumberMin: req.query.lessonNumberMin || req.query.lesson_number_min,
