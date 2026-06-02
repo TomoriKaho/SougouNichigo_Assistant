@@ -67,14 +67,6 @@ function formatVocabularyContext(snapshot = {}) {
 - 声调：${clean(snapshot.accent)}
 - 词性：${clean(snapshot.part_of_speech)}
 - 当前释义：${clean(snapshot.explanation)}
-- 教材：${clean(snapshot.textbook_name)}
-- 课：第${clean(snapshot.lesson_number)}课
-- 单元：${clean(snapshot.unit_name)}
-- 词表：${clean(snapshot.table_type_label || snapshot.source_table_label || snapshot.table_type)}
-- 专有名词：${boolLabel(snapshot.is_proper_noun)}
-- オノマトペ：${boolLabel(snapshot.is_onomatopoeia)}
-- 外来词：${boolLabel(snapshot.is_loanword)}
-- 汉字词：${boolLabel(snapshot.has_kanji)}
 `.trim()
 }
 
@@ -93,9 +85,6 @@ function formatGrammarContext(snapshot = {}) {
 - 说明：${clean(snapshot.notes)}
 - 例句：
 ${examples}
-- 教材：${clean(snapshot.textbook_name)}
-- 课：第${clean(snapshot.lesson_number)}课
-- 单元：${clean(snapshot.unit_name)}
 `.trim()
 }
 
@@ -135,13 +124,13 @@ function suggestedQuestions(conversation = {}) {
       {
         key: 'vocabulary_examples',
         label: '可以给出一些例句吗？',
-        message: '可以给出一些例句吗？注意要符合当前释义。',
+        message: '可以给出这个单词的一些例句吗？',
         template_key: 'vocabulary_examples'
       },
       {
         key: 'vocabulary_other_meanings',
         label: '这个单词有没有其他释义？',
-        message: '这个单词有没有其他释义？请先区分当前教材义项和其他常见义项。',
+        message: '这个单词有没有其他释义？',
         template_key: 'vocabulary_other_meanings'
       }
     ]
@@ -149,8 +138,8 @@ function suggestedQuestions(conversation = {}) {
     if (snapshot.is_proper_noun) {
       questions.push({
         key: 'vocabulary_web_search',
-        label: `联网搜索${term}`,
-        message: `请联网搜索并介绍「${term}」。请优先给出中国大陆较容易访问的来源链接。`,
+        label: `联网搜索「${term}」`,
+        message: `请联网搜索并介绍「${term}」。`,
         template_key: 'vocabulary_web_search',
         force_web_search: true
       })
@@ -173,13 +162,13 @@ function suggestedQuestions(conversation = {}) {
       {
         key: 'grammar_examples',
         label: '可以给出一些新的例句吗？',
-        message: '可以给出一些新的例句吗？注意要符合当前文法用法。',
+        message: '可以给出一些这个用法的例句吗？',
         template_key: 'grammar_examples'
       },
       {
         key: 'grammar_other_usages',
         label: '这个文法有没有其他用法？',
-        message: '这个文法有没有其他用法？请先区分当前教材用法和其他可能用法。',
+        message: '这个文法还有没有其他用法？',
         template_key: 'grammar_other_usages'
       }
     ]
