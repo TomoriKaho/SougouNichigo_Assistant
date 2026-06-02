@@ -110,10 +110,13 @@
                     class="assistant-history-item"
                     :class="{ active: assistantActiveConversation?.id === item.id }"
                   >
-                    <button
+                    <div
                       class="assistant-history-item-main"
-                      type="button"
-                      @click="loadAssistantConversation(item.id)"
+                      role="button"
+                      tabindex="0"
+                      @click="activateAssistantHistoryItem(item)"
+                      @keydown.enter.stop.prevent="activateAssistantHistoryItem(item)"
+                      @keydown.space.stop.prevent="activateAssistantHistoryItem(item)"
                     >
                       <div class="assistant-history-item-header">
                         <template v-if="assistantHistoryMode === 'own' && assistantRenameConversationId === item.id">
@@ -129,24 +132,24 @@
                             @blur="submitAssistantConversationRename(item)"
                           />
                         </template>
-                        <span
-                          v-if="assistantHistoryMode === 'own'"
-                          class="assistant-history-title-trigger"
-                          :title="assistantConversationTitle(item)"
-                          @click.stop.prevent="startAssistantConversationRename(item)"
-                        >
-                          {{ assistantConversationTitle(item) }}
-                        </span>
-                        <span
-                          v-else
-                          :title="assistantConversationTitle(item)"
-                        >
-                          {{ assistantConversationTitle(item) }}
-                        </span>
+                          <span
+                            v-else-if="assistantHistoryMode === 'own'"
+                            class="assistant-history-title-trigger"
+                            :title="assistantConversationDisplayTitle(item)"
+                            @click.stop.prevent="startAssistantConversationRename(item)"
+                          >
+                            {{ assistantConversationDisplayTitle(item) }}
+                          </span>
+                          <span
+                            v-else
+                            :title="assistantConversationDisplayTitle(item)"
+                          >
+                            {{ assistantConversationDisplayTitle(item) }}
+                          </span>
                         <small>{{ formatAssistantTime(item.updated_at) }}</small>
                       </div>
                       <em v-if="item.last_message_excerpt">{{ item.last_message_excerpt }}</em>
-                    </button>
+                    </div>
                     <button
                       v-if="assistantHistoryMode === 'own'"
                       class="assistant-history-item-delete"
@@ -185,10 +188,16 @@
                       <template v-if="message.role === 'assistant' && message.phase === 'thinking'">
                         <span class="assistant-thinking-text">思考中...</span>
                       </template>
+                      <template v-else-if="message.role === 'assistant' && message.phase === 'replying'">
+                        <div
+                          class="assistant-message-streaming"
+                          v-html="renderAssistantStreamingMarkdown(assistantMessageDisplayContent(message))"
+                        ></div>
+                      </template>
                       <template v-else>
                         <div
                           class="assistant-message-markdown"
-                          v-html="renderAssistantMarkdown(message.content)"
+                          v-html="renderAssistantMarkdown(assistantMessageDisplayContent(message))"
                         ></div>
                       </template>
                     </div>
@@ -198,8 +207,8 @@
                           class="assistant-message-copy"
                           type="button"
                           aria-label="复制助手消息"
-                          :disabled="!message.content"
-                          @click="copyAssistantMessage(message.content)"
+                          :disabled="!assistantMessageCopyContent(message)"
+                          @click="copyAssistantMessage(assistantMessageCopyContent(message))"
                         >
                           <span aria-hidden="true">⧉</span>
                         </button>
@@ -211,8 +220,8 @@
                           class="assistant-message-copy"
                           type="button"
                           aria-label="复制用户消息"
-                          :disabled="!message.content"
-                          @click="copyAssistantMessage(message.content)"
+                          :disabled="!assistantMessageCopyContent(message)"
+                          @click="copyAssistantMessage(assistantMessageCopyContent(message))"
                         >
                           <span aria-hidden="true">⧉</span>
                         </button>
@@ -242,7 +251,7 @@
                     <div v-if="assistantCanViewSharedHistory" class="assistant-suggestion-alt">
                       <span class="assistant-suggestion-caption assistant-suggestion-alt-label">或是</span>
                       <button
-                        class="ghost assistant-suggestion-alt-button"
+                        class="assistant-suggestion-alt-button"
                         type="button"
                         :disabled="assistantBusy || assistantHistoryLoading"
                         @click="openAssistantSharedHistory"
@@ -386,6 +395,18 @@ let assistantSleepTimer = null;
 let assistantOrbPressTimer = null;
 let assistantPanelSnapbackTimer = null;
 let assistantSidebarAdjustTimer = null;
+let assistantStreamStartTimer = null;
+const assistantStreamRender = reactive({
+  activeMessageId: null,
+  queue: [],
+  started: false,
+  firstDeltaAt: 0,
+  completed: false,
+  finalContent: '',
+  running: false,
+  completionPromise: null,
+  resolveCompletion: null
+});
 const assistantResizeDirections = ['n', 'e', 's', 'w', 'ne', 'nw', 'se', 'sw'];
 const assistantOrbSize = 96;
 const assistantOrbDefaultOffset = { right: 38, bottom: 26 };
@@ -553,11 +574,74 @@ function renderAssistantMarkdown(content) {
   return markdownRenderer.render(emphasizeAssistantContextPrompt(content));
 }
 
+function escapeAssistantHtml(content) {
+  return String(content || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function splitStreamingMarkdown(content) {
+  const text = emphasizeAssistantContextPrompt(content);
+  if (!text) return { rendered: '', pending: '' };
+
+  const fenceMatches = [...text.matchAll(/```/g)].map((match) => match.index ?? 0);
+  let stableSearchLimit = text.length;
+  if (fenceMatches.length % 2 === 1) {
+    stableSearchLimit = fenceMatches[fenceMatches.length - 1];
+  }
+
+  const stableSearchText = text.slice(0, stableSearchLimit);
+  if (!stableSearchText.trim()) {
+    return { rendered: '', pending: text };
+  }
+
+  if (stableSearchLimit === text.length && /\n\n\s*$/.test(text)) {
+    return { rendered: text, pending: '' };
+  }
+
+  const lastBlockBoundary = stableSearchText.lastIndexOf('\n\n');
+  if (lastBlockBoundary === -1) {
+    return { rendered: '', pending: text };
+  }
+
+  const rendered = text.slice(0, lastBlockBoundary + 2);
+  const pending = text.slice(lastBlockBoundary + 2);
+  return { rendered, pending };
+}
+
+function renderAssistantStreamingMarkdown(content) {
+  const { rendered, pending } = splitStreamingMarkdown(content);
+  let html = '';
+
+  if (rendered.trim()) {
+    html += `<div class="assistant-message-markdown assistant-message-markdown-stream">${markdownRenderer.render(rendered)}</div>`;
+  }
+
+  if (pending) {
+    html += `<div class="assistant-message-plain assistant-message-plain-stream">${escapeAssistantHtml(pending).replace(/\n/g, '<br>')}</div>`;
+  }
+
+  return html || '<div class="assistant-message-plain assistant-message-plain-stream"></div>';
+}
+
+function assistantMessageDisplayContent(message) {
+  return message?.displayContent ?? message?.content ?? '';
+}
+
+function assistantMessageCopyContent(message) {
+  return message?.content || message?.displayContent || '';
+}
+
 function createAssistantWelcomeMessage() {
+  const content = '你好呀，我是你的AI日语助手阿酱。你可以向我提问任何日语相关的问题，我会为你详细解释。';
   return {
     id: 1,
     role: 'assistant',
-    content: '你好呀，我是你的AI日语助手阿酱。你可以向我提问任何日语相关的问题，我会为你详细解释。',
+    content,
+    displayContent: content,
     created_at: new Date().toISOString(),
     phase: 'done'
   };
@@ -574,10 +658,12 @@ function scrollAssistantChatToBottom() {
 }
 
 function mapAssistantMessage(message) {
+  const content = message.content || '';
   return {
     id: message.id || `${message.role}-${Date.now()}-${Math.random()}`,
     role: message.role === 'user' ? 'user' : 'assistant',
-    content: message.content || '',
+    content,
+    displayContent: content,
     created_at: message.created_at || '',
     phase: 'done'
   };
@@ -638,12 +724,30 @@ function restoreAssistantOwnedConversationSnapshot() {
   scrollAssistantChatToBottom();
 }
 
-function assistantConversationTitle(item) {
+function assistantConversationPrefix(contextType) {
+  if (contextType === 'vocabulary') return '单词：';
+  if (contextType === 'grammar') return '文法：';
+  if (contextType === 'text') return '文章：';
+  return '';
+}
+
+function assistantConversationEditableTitle(item) {
   if (!item) return '自由提问';
-  if (item.context_type === 'vocabulary') return `单词：${item.context_label || '-'}`;
-  if (item.context_type === 'grammar') return `文法：${item.context_label || '-'}`;
-  if (item.context_type === 'text') return `文章：${item.context_label || '-'}`;
-  return item.context_label || '自由提问';
+  const rawLabel = String(item.context_label || '').trim();
+  if (!rawLabel) return item.context_type === 'none' ? '自由提问' : '';
+  const prefix = assistantConversationPrefix(item.context_type);
+  if (prefix && rawLabel.startsWith(prefix)) {
+    return rawLabel.slice(prefix.length).trim();
+  }
+  return rawLabel;
+}
+
+function assistantConversationDisplayTitle(item) {
+  if (!item) return '自由提问';
+  const label = assistantConversationEditableTitle(item);
+  if (item.context_type === 'none') return label || '自由提问';
+  const prefix = assistantConversationPrefix(item.context_type);
+  return `${prefix}${label || '-'}`;
 }
 
 function formatAssistantTime(value) {
@@ -798,6 +902,12 @@ async function startAssistantNewConversation() {
   }
 }
 
+function activateAssistantHistoryItem(item) {
+  if (!item?.id) return;
+  if (assistantHistoryMode.value === 'own' && assistantRenameConversationId.value === item.id) return;
+  loadAssistantConversation(item.id);
+}
+
 async function deleteAssistantConversation(item) {
   if (!item?.id) return;
   if (!window.confirm('确认删除这条对话历史？')) return;
@@ -825,7 +935,7 @@ function cancelAssistantConversationRename() {
 function startAssistantConversationRename(item) {
   if (!item?.id || assistantHistoryMode.value !== 'own') return;
   assistantRenameConversationId.value = item.id;
-  assistantRenameDraft.value = assistantConversationTitle(item);
+  assistantRenameDraft.value = assistantConversationEditableTitle(item);
   nextTick(() => {
     const input = assistantRenameInputRef.value;
     if (input?.focus) {
@@ -850,7 +960,14 @@ async function submitAssistantConversationRename(item) {
       timeout: 30000
     });
     assistantHistoryRows.value = assistantHistoryRows.value.map((row) => (
-      Number(row.id) === Number(item.id) ? { ...row, ...data.conversation } : row
+      Number(row.id) === Number(item.id)
+        ? {
+            ...row,
+            ...data.conversation,
+            last_message_excerpt: data.conversation?.last_message_excerpt || row.last_message_excerpt,
+            last_message_at: data.conversation?.last_message_at || row.last_message_at
+          }
+        : row
     ));
     if (Number(assistantActiveConversation.value?.id) === Number(item.id)) {
       assistantActiveConversation.value = {
@@ -902,30 +1019,203 @@ function parseSseBlock(block) {
   }
 }
 
-function typeAssistantFullText(message, content) {
-  return new Promise((resolve) => {
-    if (!content) {
-      resolve();
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function clearAssistantStreamStartTimer() {
+  if (assistantStreamStartTimer) {
+    clearTimeout(assistantStreamStartTimer);
+    assistantStreamStartTimer = null;
+  }
+}
+
+function resetAssistantStreamRender() {
+  clearAssistantStreamStartTimer();
+  assistantStreamRender.activeMessageId = null;
+  assistantStreamRender.queue = [];
+  assistantStreamRender.started = false;
+  assistantStreamRender.firstDeltaAt = 0;
+  assistantStreamRender.completed = false;
+  assistantStreamRender.finalContent = '';
+  assistantStreamRender.running = false;
+  assistantStreamRender.completionPromise = null;
+  assistantStreamRender.resolveCompletion = null;
+}
+
+function ensureAssistantRenderTarget(message) {
+  if (assistantStreamRender.activeMessageId === message.id) return;
+  resetAssistantStreamRender();
+  assistantStreamRender.activeMessageId = message.id;
+  assistantStreamRender.completionPromise = new Promise((resolve) => {
+    assistantStreamRender.resolveCompletion = resolve;
+  });
+}
+
+function assistantRenderBatchSize() {
+  const size = assistantStreamRender.queue.length;
+  if (size > 360) return 4;
+  if (size > 140) return 3;
+  if (size > 40) return 2;
+  return 1;
+}
+
+function assistantShouldStartStreaming() {
+  if (assistantStreamRender.started) return true;
+  if (assistantStreamRender.queue.length >= 48) return true;
+  const preview = assistantStreamRender.queue.join('');
+  return /[。！？!?：:\n]$/.test(preview);
+}
+
+function startAssistantStreaming(message) {
+  if (assistantStreamRender.started) return;
+  assistantStreamRender.started = true;
+  clearAssistantStreamStartTimer();
+  if (message.displayContent === undefined) {
+    message.displayContent = '';
+  }
+  message.phase = 'replying';
+  assistantState.value = 'replying';
+}
+
+function scrollAssistantStreamingToBottom() {
+  const element = assistantChatBodyRef.value;
+  if (!element) return;
+  element.scrollTop = element.scrollHeight;
+}
+
+async function runAssistantRenderLoop(message) {
+  if (assistantStreamRender.running) return assistantStreamRender.completionPromise;
+  assistantStreamRender.running = true;
+
+  while (assistantStreamRender.activeMessageId === message.id) {
+    if (!assistantStreamRender.started) {
+      if (assistantStreamRender.completed) {
+        const finalContent = assistantStreamRender.finalContent || assistantMessageCopyContent(message);
+        const displayedContent = assistantMessageDisplayContent(message);
+        if (!assistantStreamRender.queue.length && finalContent && finalContent !== displayedContent) {
+          const remaining = finalContent.startsWith(displayedContent)
+            ? finalContent.slice(displayedContent.length)
+            : finalContent;
+          assistantStreamRender.queue.push(...Array.from(remaining));
+        }
+      }
+
+      if (assistantStreamRender.queue.length) {
+        startAssistantStreaming(message);
+      } else {
+        await sleep(20);
+        continue;
+      }
+    }
+
+    if (assistantStreamRender.queue.length) {
+      const batch = assistantStreamRender.queue.splice(0, assistantRenderBatchSize()).join('');
+      message.displayContent = `${assistantMessageDisplayContent(message)}${batch}`;
+      scrollAssistantStreamingToBottom();
+      await sleep(22);
+      continue;
+    }
+
+    if (assistantStreamRender.completed) {
+      const finalContent = assistantStreamRender.finalContent || assistantMessageCopyContent(message);
+      const displayedContent = assistantMessageDisplayContent(message);
+      if (finalContent && displayedContent !== finalContent) {
+        if (finalContent.startsWith(displayedContent)) {
+          assistantStreamRender.queue.push(...Array.from(finalContent.slice(displayedContent.length)));
+          continue;
+        }
+      }
+      message.content = finalContent || displayedContent;
+      message.displayContent = finalContent && finalContent.startsWith(displayedContent)
+        ? finalContent
+        : displayedContent;
+      message.phase = 'done';
+      assistantState.value = 'idle';
+      const resolve = assistantStreamRender.resolveCompletion;
+      resetAssistantStreamRender();
+      resolve?.();
       return;
     }
-    let index = 0;
-    message.content = '';
-    message.phase = 'replying';
-    assistantState.value = 'replying';
-    if (assistantReplyTimer) clearInterval(assistantReplyTimer);
-    assistantReplyTimer = setInterval(() => {
-      message.content += content.slice(index, index + 3);
-      index += 3;
-      if (index >= content.length) {
-        clearInterval(assistantReplyTimer);
-        assistantReplyTimer = null;
-        message.content = content;
-        message.phase = 'done';
-        assistantState.value = 'idle';
-        resolve();
-      }
-    }, 18);
-  });
+
+    await sleep(40);
+  }
+
+  const resolve = assistantStreamRender.resolveCompletion;
+  resetAssistantStreamRender();
+  resolve?.();
+}
+
+function enqueueAssistantDelta(message, content) {
+  if (!content) return;
+  ensureAssistantRenderTarget(message);
+  if (!assistantStreamRender.firstDeltaAt) {
+    assistantStreamRender.firstDeltaAt = Date.now();
+  }
+  assistantStreamRender.queue.push(...Array.from(String(content)));
+  if (!assistantStreamRender.started) {
+    if (assistantShouldStartStreaming()) {
+      startAssistantStreaming(message);
+    } else if (!assistantStreamStartTimer) {
+      assistantStreamStartTimer = setTimeout(() => {
+        if (assistantStreamRender.activeMessageId !== message.id || assistantStreamRender.started) return;
+        startAssistantStreaming(message);
+        void runAssistantRenderLoop(message);
+      }, 360);
+    }
+  }
+  void runAssistantRenderLoop(message);
+}
+
+async function finalizeAssistantRender(message, finalContent, receivedDelta) {
+  ensureAssistantRenderTarget(message);
+  const normalizedFinalContent = finalContent || assistantMessageCopyContent(message) || '';
+  message.content = normalizedFinalContent;
+  const alreadyScheduledContent = `${assistantMessageDisplayContent(message)}${assistantStreamRender.queue.join('')}`;
+  let remainingChars = [];
+
+  if (normalizedFinalContent.startsWith(alreadyScheduledContent)) {
+    remainingChars = Array.from(normalizedFinalContent.slice(alreadyScheduledContent.length));
+  } else if (!receivedDelta) {
+    remainingChars = Array.from(normalizedFinalContent);
+  } else if (normalizedFinalContent.length > alreadyScheduledContent.length) {
+    remainingChars = Array.from(normalizedFinalContent.slice(alreadyScheduledContent.length));
+  }
+
+  if (remainingChars.length) {
+    assistantStreamRender.queue.push(...remainingChars);
+  }
+  assistantStreamRender.finalContent = normalizedFinalContent;
+  assistantStreamRender.completed = true;
+
+  if (!assistantStreamRender.started && assistantStreamRender.queue.length) {
+    startAssistantStreaming(message);
+  } else if (!receivedDelta && normalizedFinalContent) {
+    startAssistantStreaming(message);
+  }
+
+  void runAssistantRenderLoop(message);
+  if (assistantStreamRender.completionPromise) {
+    await assistantStreamRender.completionPromise;
+  }
+}
+
+function abortAssistantRender(message, fallbackContent = '') {
+  if (assistantStreamRender.activeMessageId === message?.id) {
+    const resolve = assistantStreamRender.resolveCompletion;
+    resetAssistantStreamRender();
+    resolve?.();
+  }
+  if (assistantReplyTimer) {
+    clearInterval(assistantReplyTimer);
+    assistantReplyTimer = null;
+  }
+  if (message) {
+    message.phase = 'done';
+    message.content = fallbackContent;
+    message.displayContent = fallbackContent;
+  }
+  assistantState.value = 'idle';
 }
 
 async function streamAssistantMessage({ conversationId, content, templateKey, forceWebSearch, replyMessage }) {
@@ -958,12 +1248,9 @@ async function streamAssistantMessage({ conversationId, content, templateKey, fo
     const payload = parseSseBlock(block);
     if (payload.event === 'delta' && payload.data?.content) {
       if (!receivedDelta) {
-        replyMessage.content = '';
-        replyMessage.phase = 'replying';
-        assistantState.value = 'replying';
         receivedDelta = true;
       }
-      replyMessage.content += payload.data.content;
+      enqueueAssistantDelta(replyMessage, payload.data.content);
       return;
     }
 
@@ -971,22 +1258,19 @@ async function streamAssistantMessage({ conversationId, content, templateKey, fo
       if (payload.data?.conversation) {
         assistantActiveConversation.value = payload.data.conversation;
       }
-      if (payload.data?.message?.id) {
-        replyMessage.id = payload.data.message.id;
-      }
       if (payload.data?.message?.created_at) {
         replyMessage.created_at = payload.data.message.created_at;
       }
-      const finalContent = payload.data?.message?.content || replyMessage.content;
-      if (!receivedDelta && finalContent) {
-        await typeAssistantFullText(replyMessage, finalContent);
-      } else {
-        replyMessage.content = finalContent;
-        replyMessage.phase = 'done';
-        assistantState.value = 'idle';
+      const serverMessageId = payload.data?.message?.id;
+      const finalContent = payload.data?.message?.content || assistantMessageCopyContent(replyMessage);
+      await finalizeAssistantRender(replyMessage, finalContent, receivedDelta);
+      if (serverMessageId) {
+        replyMessage.id = serverMessageId;
       }
       return;
     }
+
+    if (payload.event === 'ping') return;
 
     if (payload.event === 'error') {
       throw new ApiError(payload.data?.error || 'AI 回复失败', { status: payload.data?.status || 500 });
@@ -1010,8 +1294,7 @@ async function streamAssistantMessage({ conversationId, content, templateKey, fo
   }
 
   if (assistantState.value !== 'idle') {
-    replyMessage.phase = 'done';
-    assistantState.value = 'idle';
+    await finalizeAssistantRender(replyMessage, assistantMessageCopyContent(replyMessage), receivedDelta);
   }
 }
 
@@ -1214,10 +1497,7 @@ function clearAssistantTimers() {
     clearTimeout(assistantThinkingTimer);
     assistantThinkingTimer = null;
   }
-  if (assistantReplyTimer) {
-    clearInterval(assistantReplyTimer);
-    assistantReplyTimer = null;
-  }
+  resetAssistantStreamRender();
   clearAssistantSleepTimer();
   clearAssistantOrbPressTimer();
   clearAssistantPanelSnapbackTimer();
@@ -1547,6 +1827,7 @@ async function sendAssistantMessage({ content, templateKey, forceWebSearch } = {
     id: assistantMessageId++,
     role: 'user',
     content: question,
+    displayContent: question,
     created_at: new Date().toISOString(),
     phase: 'done'
   };
@@ -1554,6 +1835,7 @@ async function sendAssistantMessage({ content, templateKey, forceWebSearch } = {
     id: assistantMessageId++,
     role: 'assistant',
     content: '',
+    displayContent: '',
     created_at: new Date().toISOString(),
     phase: 'thinking'
   };
@@ -1562,11 +1844,9 @@ async function sendAssistantMessage({ content, templateKey, forceWebSearch } = {
   assistantInput.value = '';
   assistantOpen.value = true;
   assistantState.value = 'thinking';
+  scrollAssistantChatToBottom();
   clearAssistantSleepTimer();
-  if (assistantReplyTimer) {
-    clearInterval(assistantReplyTimer);
-    assistantReplyTimer = null;
-  }
+  resetAssistantStreamRender();
 
   try {
     await streamAssistantMessage({
@@ -1580,10 +1860,8 @@ async function sendAssistantMessage({ content, templateKey, forceWebSearch } = {
       await loadAssistantHistory();
     }
   } catch (err) {
-    replyMessage.phase = 'done';
-    replyMessage.content = err instanceof ApiError ? err.message : 'AI 回复失败，请稍后重试';
-    assistantState.value = 'idle';
-    showToast(replyMessage.content, 'error');
+    abortAssistantRender(replyMessage, err instanceof ApiError ? err.message : 'AI 回复失败，请稍后重试');
+    showToast(assistantMessageCopyContent(replyMessage), 'error');
   }
 }
 

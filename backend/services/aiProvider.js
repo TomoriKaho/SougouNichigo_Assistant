@@ -19,6 +19,26 @@ function extractDelta(payload) {
   return choice.delta?.content || choice.message?.content || ''
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function providerErrorMessage(error) {
+  return String(error?.message || error || '')
+}
+
+function isRetriableProviderError(error) {
+  const message = providerErrorMessage(error)
+  return /terminated|fetch failed|socket|ECONNRESET|ETIMEDOUT|UND_ERR|network/i.test(message)
+}
+
+function normalizeProviderError(error) {
+  if (isRetriableProviderError(error)) {
+    return new Error('AI 服务连接中断，请稍后重试')
+  }
+  return error
+}
+
 async function parseNonStreamingResponse(response) {
   const text = await response.text()
   try {
@@ -29,15 +49,7 @@ async function parseNonStreamingResponse(response) {
   }
 }
 
-async function completeChat({ messages, enableSearch = false, forcedSearch = false } = {}) {
-  let content = ''
-  for await (const delta of streamChat({ messages, enableSearch, forcedSearch })) {
-    content += delta
-  }
-  return content
-}
-
-async function* streamChat({ messages, enableSearch = false, forcedSearch = false } = {}) {
+function chatRequestBody({ messages, enableSearch = false, forcedSearch = false, stream = true } = {}) {
   const config = providerConfig()
   if (!config.provider) {
     throw new Error('缺少 AI_PROVIDER，请在 backend/.env 中配置')
@@ -55,7 +67,7 @@ async function* streamChat({ messages, enableSearch = false, forcedSearch = fals
   const body = {
     model: config.model,
     messages,
-    stream: true
+    stream
   }
 
   if (enableSearch) {
@@ -70,6 +82,11 @@ async function* streamChat({ messages, enableSearch = false, forcedSearch = fals
     }
   }
 
+  return { config, body }
+}
+
+async function fetchChatResponse({ messages, enableSearch = false, forcedSearch = false, stream = true } = {}) {
+  const { config, body } = chatRequestBody({ messages, enableSearch, forcedSearch, stream })
   const response = await fetch(`${config.baseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -84,6 +101,31 @@ async function* streamChat({ messages, enableSearch = false, forcedSearch = fals
     const errorText = await response.text().catch(() => '')
     throw new Error(errorText || `AI 服务请求失败：${response.status}`)
   }
+
+  return response
+}
+
+async function completeChatOnce({ messages, enableSearch = false, forcedSearch = false } = {}) {
+  const response = await fetchChatResponse({ messages, enableSearch, forcedSearch, stream: false })
+  return parseNonStreamingResponse(response)
+}
+
+async function completeChat({ messages, enableSearch = false, forcedSearch = false } = {}) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await completeChatOnce({ messages, enableSearch, forcedSearch })
+    } catch (error) {
+      if (attempt === 1 || !isRetriableProviderError(error)) {
+        throw normalizeProviderError(error)
+      }
+      await wait(600)
+    }
+  }
+  return ''
+}
+
+async function* streamChatOnce({ messages, enableSearch = false, forcedSearch = false } = {}) {
+  const response = await fetchChatResponse({ messages, enableSearch, forcedSearch, stream: true })
 
   const contentType = response.headers.get('content-type') || ''
   if (!response.body || !contentType.includes('stream')) {
@@ -126,6 +168,36 @@ async function* streamChat({ messages, enableSearch = false, forcedSearch = fals
 
   if (buffer.trim()) {
     yield* extractDeltasFromPart(buffer)
+  }
+}
+
+async function* streamChat({ messages, enableSearch = false, forcedSearch = false } = {}) {
+  let lastError = null
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let emitted = false
+    try {
+      for await (const delta of streamChatOnce({ messages, enableSearch, forcedSearch })) {
+        emitted = true
+        yield delta
+      }
+      return
+    } catch (error) {
+      lastError = error
+      if (emitted || !isRetriableProviderError(error)) {
+        throw normalizeProviderError(error)
+      }
+      if (attempt === 0) {
+        await wait(600)
+      }
+    }
+  }
+
+  try {
+    const fullText = await completeChatOnce({ messages, enableSearch, forcedSearch })
+    if (fullText) yield fullText
+  } catch (error) {
+    throw normalizeProviderError(lastError || error)
   }
 }
 

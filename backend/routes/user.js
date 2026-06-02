@@ -54,8 +54,10 @@ function streamReadingMaterial(res, item, { view = false } = {}) {
 }
 
 function writeSse(res, event, data) {
+  if (res.writableEnded || res.destroyed) return
   res.write(`event: ${event}\n`)
   res.write(`data: ${JSON.stringify(data)}\n\n`)
+  res.flush?.()
 }
 
 function publicReadingMaterial(row) {
@@ -230,6 +232,14 @@ router.post('/assistant/conversations/:id/messages/stream', authMiddleware, asyn
   res.setHeader('Cache-Control', 'no-cache, no-transform')
   res.setHeader('Connection', 'keep-alive')
   res.flushHeaders?.()
+  writeSse(res, 'ping', { ts: Date.now(), phase: 'connected' })
+  const heartbeat = setInterval(() => {
+    writeSse(res, 'ping', { ts: Date.now() })
+  }, 2000)
+
+  res.on('close', () => {
+    clearInterval(heartbeat)
+  })
 
   try {
     const result = await assistantService.streamAssistantReply({
@@ -247,6 +257,7 @@ router.post('/assistant/conversations/:id/messages/stream', authMiddleware, asyn
       status: error.status || 500
     })
   } finally {
+    clearInterval(heartbeat)
     res.end()
   }
 })

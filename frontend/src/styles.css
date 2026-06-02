@@ -630,6 +630,12 @@ button.ghost:hover {
   color: var(--text);
   text-align: left;
   box-shadow: none;
+  cursor: pointer;
+}
+
+.assistant-history-item-main:focus-visible {
+  outline: 2px solid rgba(139, 0, 18, 0.26);
+  outline-offset: 1px;
 }
 
 .assistant-history-item-delete {
@@ -848,6 +854,19 @@ button.ghost:hover {
   overflow-wrap: anywhere;
 }
 
+.assistant-message-streaming {
+  overflow-wrap: anywhere;
+}
+
+.assistant-message-plain {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.assistant-message-markdown-stream + .assistant-message-plain-stream {
+  margin-top: 0.2em;
+}
+
 .assistant-message-markdown > :first-child {
   margin-top: 0;
 }
@@ -1000,20 +1019,28 @@ button.ghost:hover {
 }
 
 .assistant-suggestion-alt-button {
-  min-height: 30px;
-  padding: 5px 10px;
-  border-radius: 8px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   font-size: 12px;
   text-align: right;
-  color: #fff8ed;
-  background: var(--theme-red);
-  border-color: var(--theme-red);
+  color: var(--theme-red);
+  background: transparent;
+  box-shadow: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
 }
 
 .assistant-suggestion-alt-button:hover:not(:disabled) {
-  color: #fff8ed;
-  background: #8f0016;
-  border-color: #8f0016;
+  color: #8f0016;
+  background: transparent;
+}
+
+.assistant-suggestion-alt-button:disabled {
+  color: rgba(128, 95, 64, 0.5);
+  cursor: not-allowed;
 }
 
 .assistant-message-user .assistant-message-markdown a {
@@ -2170,7 +2197,7 @@ textarea:disabled {
 .filter-help-tooltip-bubble {
   position: absolute;
   left: 50%;
-  bottom: calc(100% + 8px);
+  top: calc(100% + 8px);
   transform: translateX(-50%);
   min-width: 180px;
   max-width: 220px;
@@ -2194,12 +2221,12 @@ textarea:disabled {
   content: '';
   position: absolute;
   left: 50%;
-  top: 100%;
+  bottom: 100%;
   width: 10px;
   height: 10px;
   background: #fffaf4;
-  border-right: 1px solid rgba(222, 207, 188, 0.95);
-  border-bottom: 1px solid rgba(222, 207, 188, 0.95);
+  border-left: 1px solid rgba(222, 207, 188, 0.95);
+  border-top: 1px solid rgba(222, 207, 188, 0.95);
   transform: translateX(-50%) rotate(45deg);
 }
 
@@ -2385,7 +2412,7 @@ textarea:disabled {
 }
 
 .lexicon-entry-term.is-non-key-word {
-  color: #433c39;
+  color: #5d5957;
 }
 
 .lexicon-entry-term:hover {

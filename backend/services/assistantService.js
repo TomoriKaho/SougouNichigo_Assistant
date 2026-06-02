@@ -153,10 +153,7 @@ async function streamAssistantReply({ userId, conversationId, content, templateK
 
   const existingMessages = AssistantConversation.messages(conversation.id)
   const isFirstUserQuestion = !existingMessages.some((message) => message.role === 'user')
-  if (conversation.context_type === 'none' && isFirstUserQuestion) {
-    const title = await buildFreeConversationTitle(question)
-    AssistantConversation.updateContextLabel(conversation.id, title)
-  }
+  const shouldGenerateFreeTitle = conversation.context_type === 'none' && isFirstUserQuestion
 
   AssistantConversation.addMessage({
     conversationId: conversation.id,
@@ -194,6 +191,12 @@ async function streamAssistantReply({ userId, conversationId, content, templateK
     usedWebSearch: searchDecision.enableSearch,
     citations: []
   })
+
+  if (shouldGenerateFreeTitle) {
+    buildFreeConversationTitle(question)
+      .then((title) => AssistantConversation.updateContextLabel(conversation.id, title))
+      .catch(() => {})
+  }
 
   return {
     message: saved,
