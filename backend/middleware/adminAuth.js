@@ -11,6 +11,7 @@ function toAdminPayload(user) {
     username: user.username,
     email: user.email,
     user_type: user.user_type,
+    grade: user.grade,
     role: user.role,
     isInitialAdmin: !!user.is_initial_admin,
     isInitialDev: !!user.is_initial_dev

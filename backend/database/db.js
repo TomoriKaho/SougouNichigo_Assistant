@@ -56,6 +56,7 @@ function initUserDatabase() {
       password TEXT NOT NULL,
       email TEXT,
       user_type TEXT DEFAULT 'student',
+      grade TEXT DEFAULT '高年级',
       role TEXT DEFAULT 'user',
       is_initial_admin INTEGER DEFAULT 0,
       is_initial_dev INTEGER DEFAULT 0,
@@ -66,6 +67,7 @@ function initUserDatabase() {
 
   ensureColumn(userDb, 'users', 'email', 'email TEXT')
   ensureColumn(userDb, 'users', 'user_type', "user_type TEXT DEFAULT 'student'")
+  ensureColumn(userDb, 'users', 'grade', "grade TEXT DEFAULT '高年级'")
   ensureColumn(userDb, 'users', 'role', "role TEXT DEFAULT 'user'")
   ensureColumn(userDb, 'users', 'is_initial_admin', 'is_initial_admin INTEGER DEFAULT 0')
   ensureColumn(userDb, 'users', 'is_initial_dev', 'is_initial_dev INTEGER DEFAULT 0')
@@ -78,6 +80,14 @@ function initUserDatabase() {
   `)
   userDb.exec('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)')
   userDb.exec('CREATE INDEX IF NOT EXISTS idx_users_type ON users(user_type)')
+  userDb.exec(`
+    UPDATE users
+    SET grade = CASE
+      WHEN user_type = 'teacher' THEN '教师'
+      WHEN grade IS NULL OR trim(grade) = '' OR grade = '教师' THEN '高年级'
+      ELSE grade
+    END
+  `)
 
   userDb.exec(`
     CREATE TABLE IF NOT EXISTS classes (

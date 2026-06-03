@@ -6,7 +6,15 @@ const AdmZip = require('adm-zip')
 const router = express.Router()
 const { requireAdmin, signAdminToken, ADMIN_JWT_EXPIRES_IN } = require('../middleware/adminAuth')
 const { dataDir, dbPaths } = require('../database/db')
-const { User, ALLOWED_ROLES, ALLOWED_USER_TYPES } = require('../models/User')
+const {
+  User,
+  ALLOWED_ROLES,
+  ALLOWED_USER_TYPES,
+  STUDENT_GRADES,
+  isGradeAllowedForUserType,
+  normalizeGrade,
+  normalizeUserType
+} = require('../models/User')
 const { Vocabulary } = require('../models/Vocabulary')
 const { Grammar } = require('../models/Grammar')
 const { Text } = require('../models/Text')
@@ -193,6 +201,7 @@ router.post('/auth/login', (req, res) => {
       username: user.username,
       email: user.email,
       user_type: user.user_type,
+      grade: user.grade,
       role: user.role,
       isInitialAdmin: !!user.is_initial_admin,
       isInitialDev: !!user.is_initial_dev
@@ -234,13 +243,19 @@ router.get('/users', requireAdmin, (req, res) => {
 
 router.post('/users', requireAdmin, (req, res) => {
   const role = String(req.body.role || 'user')
-  const userType = String(req.body.user_type || 'student')
+  const rawUserType = String(req.body.user_type || 'student')
+  const userType = normalizeUserType(rawUserType)
+  const requestedGrade = String(req.body.grade || '').trim()
+  const grade = normalizeGrade(userType, requestedGrade)
 
   if (!ALLOWED_ROLES.includes(role)) {
     return res.status(400).json({ error: '角色无效' })
   }
-  if (!ALLOWED_USER_TYPES.includes(userType)) {
+  if (!ALLOWED_USER_TYPES.includes(rawUserType)) {
     return res.status(400).json({ error: '用户类型无效' })
+  }
+  if (!isGradeAllowedForUserType(userType, grade)) {
+    return res.status(400).json({ error: userType === 'teacher' ? '教师身份的年级必须为教师' : `学生年级仅支持：${STUDENT_GRADES.join('、')}` })
   }
   if (!isDev(req) && role === 'dev') {
     return forbid(res, 'admin 不可创建 dev 用户')
@@ -252,7 +267,8 @@ router.post('/users', requireAdmin, (req, res) => {
       email: req.body.email,
       password: req.body.password,
       role,
-      user_type: userType
+      user_type: userType,
+      grade
     })
     res.status(201).json({ id })
   } catch (error) {
@@ -278,9 +294,19 @@ router.put('/users/:id', requireAdmin, (req, res) => {
   if (req.body.password) payload.password = req.body.password
 
   if (req.body.user_type !== undefined) {
-    const userType = String(req.body.user_type)
-    if (!ALLOWED_USER_TYPES.includes(userType)) return res.status(400).json({ error: '用户类型无效' })
+    const rawUserType = String(req.body.user_type)
+    const userType = normalizeUserType(rawUserType)
+    if (!ALLOWED_USER_TYPES.includes(rawUserType)) return res.status(400).json({ error: '用户类型无效' })
     payload.user_type = userType
+  }
+
+  if (req.body.grade !== undefined || payload.user_type !== undefined) {
+    const nextUserType = payload.user_type !== undefined ? payload.user_type : target.user_type
+    const nextGrade = normalizeGrade(nextUserType, req.body.grade !== undefined ? String(req.body.grade || '').trim() : target.grade)
+    if (!isGradeAllowedForUserType(nextUserType, nextGrade)) {
+      return res.status(400).json({ error: nextUserType === 'teacher' ? '教师身份的年级必须为教师' : `学生年级仅支持：${STUDENT_GRADES.join('、')}` })
+    }
+    payload.grade = nextGrade
   }
 
   if (req.body.role !== undefined) {

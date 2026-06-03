@@ -56,6 +56,7 @@
               <th class="col-email">邮箱</th>
               <th class="col-username">用户名</th>
               <th class="col-type">类型</th>
+              <th class="col-type">年级</th>
               <th class="col-role">角色</th>
               <th class="col-created-at">创建时间</th>
               <th class="col-actions"><span class="col-actions-label">操作</span></th>
@@ -69,6 +70,7 @@
               <td class="col-type">
                 <span class="tag" :class="typeTagClass(user.user_type)">{{ userTypeLabel(user.user_type) }}</span>
               </td>
+              <td class="col-type">{{ gradeLabel(user.grade) }}</td>
               <td class="col-role">
                 <span class="tag" :class="user.role">{{ roleLabel(user.role) }}</span>
               </td>
@@ -81,7 +83,7 @@
               </td>
             </tr>
             <tr v-if="!users.length">
-              <td colspan="7" class="empty">暂无用户数据</td>
+              <td colspan="8" class="empty">暂无用户数据</td>
             </tr>
           </tbody>
         </table>
@@ -119,9 +121,18 @@
           </label>
           <label>
             类型
-            <select v-model="form.user_type">
+            <select v-model="form.user_type" @change="handleEditUserTypeChange">
               <option v-for="type in userTypeOptions" :key="type" :value="type">{{ userTypeLabel(type) }}</option>
             </select>
+          </label>
+          <label>
+            年级
+            <select v-model="form.grade" :disabled="form.user_type === 'teacher'">
+              <option v-if="form.user_type === 'teacher'" value="教师">教师</option>
+              <option v-else value="">请选择年级</option>
+              <option v-for="grade in studentGradeOptions" :key="grade" :value="grade">{{ grade }}</option>
+            </select>
+            <span v-if="formErrors.grade" class="field-error">{{ formErrors.grade }}</span>
           </label>
           <div class="edit-drawer-actions">
             <button type="button" class="ghost" :disabled="saving" @click="closeDrawer">不保存</button>
@@ -161,9 +172,18 @@
           </label>
           <label>
             类型
-            <select v-model="createForm.user_type">
+            <select v-model="createForm.user_type" @change="handleCreateUserTypeChange">
               <option v-for="type in userTypeOptions" :key="type" :value="type">{{ userTypeLabel(type) }}</option>
             </select>
+          </label>
+          <label>
+            年级
+            <select v-model="createForm.grade" :disabled="createForm.user_type === 'teacher'">
+              <option v-if="createForm.user_type === 'teacher'" value="教师">教师</option>
+              <option v-else value="">请选择年级</option>
+              <option v-for="grade in studentGradeOptions" :key="grade" :value="grade">{{ grade }}</option>
+            </select>
+            <span v-if="createErrors.grade" class="field-error">{{ createErrors.grade }}</span>
           </label>
           <button type="submit" :disabled="creating">创建</button>
         </form>
@@ -217,6 +237,7 @@ const deleteDialog = ref(null);
 const toast = reactive({ visible: false, message: '', type: 'info' });
 
 const userTypeOptions = ['student', 'teacher'];
+const studentGradeOptions = ['大一上', '大一下', '大二上', '大二下', '高年级'];
 const createRoleOptions = computed(() => (isDev.value ? ['user', 'admin', 'dev'] : ['user', 'admin']));
 const currentUserId = computed(() => Number(state.user?.id || 0));
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
@@ -225,10 +246,10 @@ const roleHelp = computed(() => {
   return roleDisabledReason(activeUser.value);
 });
 
-const form = reactive({ email: '', username: '', password: '', role: 'user', user_type: 'student' });
-const formErrors = reactive({ email: '', username: '', password: '' });
-const createForm = reactive({ email: '', username: '', password: '', role: 'user', user_type: 'student' });
-const createErrors = reactive({ email: '', username: '', password: '' });
+const form = reactive({ email: '', username: '', password: '', role: 'user', user_type: 'student', grade: '' });
+const formErrors = reactive({ email: '', username: '', password: '', grade: '' });
+const createForm = reactive({ email: '', username: '', password: '', role: 'user', user_type: 'student', grade: '' });
+const createErrors = reactive({ email: '', username: '', password: '', grade: '' });
 
 function showToast(message, type = 'info') {
   toast.message = message;
@@ -313,8 +334,17 @@ function userTypeLabel(type) {
   return type || '-';
 }
 
+function gradeLabel(grade) {
+  return grade || '-';
+}
+
 function typeTagClass(type) {
   return type === 'teacher' ? 'success' : 'info';
+}
+
+function normalizeGradeForForm(userType, grade) {
+  if (userType === 'teacher') return '教师';
+  return studentGradeOptions.includes(grade) ? grade : '';
 }
 
 function canEdit(user) {
@@ -374,6 +404,7 @@ function openEdit(user) {
   form.password = '';
   form.role = user.role || 'user';
   form.user_type = user.user_type || 'student';
+  form.grade = normalizeGradeForForm(form.user_type, user.grade);
   resetErrors(formErrors);
   drawerOpen.value = true;
 }
@@ -389,6 +420,7 @@ function openCreate() {
   createForm.password = '';
   createForm.role = 'user';
   createForm.user_type = 'student';
+  createForm.grade = '';
   resetErrors(createErrors);
   createOpen.value = true;
 }
@@ -401,7 +433,16 @@ function validateUserForm(target, errors, isCreate) {
   resetErrors(errors);
   if (!target.username.trim()) errors.username = '请输入用户名';
   if (isCreate && !target.password.trim()) errors.password = '请输入密码';
+  if (target.user_type === 'student' && !target.grade) errors.grade = '学生用户请选择年级';
   return !Object.values(errors).some(Boolean);
+}
+
+function handleEditUserTypeChange() {
+  form.grade = normalizeGradeForForm(form.user_type, form.grade);
+}
+
+function handleCreateUserTypeChange() {
+  createForm.grade = normalizeGradeForForm(createForm.user_type, createForm.grade);
 }
 
 async function submitEdit() {
@@ -416,7 +457,8 @@ async function submitEdit() {
         username: form.username.trim(),
         password: form.password || undefined,
         role: form.role,
-        user_type: form.user_type
+        user_type: form.user_type,
+        grade: form.user_type === 'teacher' ? '教师' : form.grade
       }
     });
     showToast('用户已更新', 'success');
@@ -441,7 +483,8 @@ async function submitCreate() {
         username: createForm.username.trim(),
         password: createForm.password,
         role: createForm.role,
-        user_type: createForm.user_type
+        user_type: createForm.user_type,
+        grade: createForm.user_type === 'teacher' ? '教师' : createForm.grade
       }
     });
     showToast('用户已创建', 'success');

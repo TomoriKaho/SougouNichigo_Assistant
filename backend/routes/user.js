@@ -1,7 +1,7 @@
 const express = require('express')
 const fs = require('fs')
 const router = express.Router()
-const { User } = require('../models/User')
+const { User, ALLOWED_USER_TYPES, STUDENT_GRADES, isGradeAllowedForUserType, normalizeGrade, normalizeUserType } = require('../models/User')
 const { ReadingMaterial } = require('../models/ReadingMaterial')
 const { Grammar } = require('../models/Grammar')
 const { Text } = require('../models/Text')
@@ -95,12 +95,22 @@ router.post('/register', (req, res) => {
   const username = String(req.body.username || '').trim()
   const email = String(req.body.email || '').trim().toLowerCase()
   const password = String(req.body.password || '').trim()
+  const rawUserType = String(req.body.user_type || 'student')
+  const userType = normalizeUserType(rawUserType)
+  const requestedGrade = String(req.body.grade || '').trim()
+  const grade = normalizeGrade(userType, requestedGrade)
 
   if (!email) return fieldError(res, 400, 'email', '请输入邮箱地址')
   if (!EMAIL_PATTERN.test(email)) return fieldError(res, 400, 'email', '请输入有效的邮箱地址')
   if (!username) return fieldError(res, 400, 'username', '请输入用户名')
   if (!USERNAME_PATTERN.test(username)) return fieldError(res, 400, 'username', '用户名需为6-15位字母或数字组合')
   if (!password) return fieldError(res, 400, 'password', '请输入密码')
+  if (!ALLOWED_USER_TYPES.includes(rawUserType)) return fieldError(res, 400, 'user_type', '请选择身份')
+  if (userType === 'student' && !requestedGrade) return fieldError(res, 400, 'grade', '请选择年级')
+  if (!isGradeAllowedForUserType(userType, grade)) {
+    const message = userType === 'teacher' ? '教师身份的年级必须为教师' : `学生年级仅支持：${STUDENT_GRADES.join('、')}`
+    return fieldError(res, 400, 'grade', message)
+  }
   if (!validatePassword(password)) {
     return fieldError(res, 400, 'password', '密码需为8-20位，包含字母、数字、特殊符号中的至少两种')
   }
@@ -114,7 +124,8 @@ router.post('/register', (req, res) => {
       email,
       password,
       role: 'user',
-      user_type: 'student'
+      user_type: userType,
+      grade
     })
     const publicUser = User.findById(id)
     res.status(201).json({
@@ -382,6 +393,9 @@ router.post('/classes', authMiddleware, requireTeacher, (req, res) => {
     if (String(error?.message || '').includes('班级名不能为空')) {
       return res.status(400).json({ error: '请输入班级名' })
     }
+    if (String(error?.message || '').includes('班级名称不得超过20个字')) {
+      return res.status(400).json({ error: '班级名称不得超过20个字' })
+    }
     console.error(error)
     return res.status(500).json({ error: '创建班级失败' })
   }
@@ -437,6 +451,9 @@ router.put('/classes/:id', authMiddleware, requireTeacher, (req, res) => {
   } catch (error) {
     if (String(error?.message || '').includes('班级名不能为空')) {
       return res.status(400).json({ error: '请输入班级名' })
+    }
+    if (String(error?.message || '').includes('班级名称不得超过20个字')) {
+      return res.status(400).json({ error: '班级名称不得超过20个字' })
     }
     console.error(error)
     return res.status(500).json({ error: '修改班级名称失败' })

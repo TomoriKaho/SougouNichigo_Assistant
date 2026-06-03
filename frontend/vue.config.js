@@ -6,6 +6,7 @@ module.exports = {
   // 禁用 thread-loader 并行编译，避免 Docker 构建时 worker 序列化 SFC 失败
   parallel: false,
   devServer: {
+    historyApiFallback: true,
     proxy: {
       '/admin': {
         target,

@@ -66,6 +66,26 @@
             {{ registerErrors.password || '支持字母、数字、!@#$%^&*()_+-.，至少包含两类。' }}
           </span>
         </label>
+        <label>
+          身份
+          <select v-model="registerForm.user_type" @change="handleUserTypeChange">
+            <option value="student">学生</option>
+            <option value="teacher">教师</option>
+          </select>
+          <span :class="registerErrors.user_type ? 'field-error' : 'field-hint'">
+            {{ registerErrors.user_type || '请先选择注册身份。' }}
+          </span>
+        </label>
+        <label v-if="registerForm.user_type === 'student'">
+          年级
+          <select v-model="registerForm.grade" @change="validateField('grade')">
+            <option value="">请选择年级</option>
+            <option v-for="grade in studentGradeOptions" :key="grade" :value="grade">{{ grade }}</option>
+          </select>
+          <span :class="registerErrors.grade ? 'field-error' : 'field-hint'">
+            {{ registerErrors.grade || '学生用户请选择当前年级。' }}
+          </span>
+        </label>
         <p v-if="errorText" class="error">{{ errorText }}</p>
         <div class="login-register-actions">
           <button type="submit" :disabled="state.loading">
@@ -87,11 +107,12 @@ const router = useRouter();
 const route = useRoute();
 const { state, login, register } = useAuth();
 const mode = ref('login');
+const studentGradeOptions = ['大一上', '大一下', '大二上', '大二下', '高年级'];
 
 const loginForm = reactive({ identifier: '', password: '' });
-const registerForm = reactive({ email: '', username: '', password: '' });
-const registerErrors = reactive({ email: '', username: '', password: '' });
-const touched = reactive({ email: false, username: false, password: false });
+const registerForm = reactive({ email: '', username: '', password: '', user_type: 'student', grade: '' });
+const registerErrors = reactive({ email: '', username: '', password: '', user_type: '', grade: '' });
+const touched = reactive({ email: false, username: false, password: false, user_type: false, grade: false });
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const usernamePattern = /^[A-Za-z0-9]{6,15}$/;
@@ -130,6 +151,16 @@ function validateField(field) {
     else registerErrors.password = '';
   }
 
+  if (field === 'user_type') {
+    if (!registerForm.user_type) registerErrors.user_type = '请选择身份';
+    else registerErrors.user_type = '';
+  }
+
+  if (field === 'grade') {
+    if (registerForm.user_type === 'student' && !registerForm.grade) registerErrors.grade = '请选择年级';
+    else registerErrors.grade = '';
+  }
+
   return !registerErrors[field];
 }
 
@@ -138,7 +169,7 @@ function validateFieldIfTouched(field) {
 }
 
 function validateRegisterForm() {
-  return ['email', 'username', 'password'].map(validateField).every(Boolean);
+  return ['email', 'username', 'password', 'user_type', 'grade'].map(validateField).every(Boolean);
 }
 
 function fieldStatus(field) {
@@ -153,13 +184,38 @@ function clearRegisterErrors() {
   registerErrors.email = '';
   registerErrors.username = '';
   registerErrors.password = '';
+  registerErrors.user_type = '';
+  registerErrors.grade = '';
   touched.email = false;
   touched.username = false;
   touched.password = false;
+  touched.user_type = false;
+  touched.grade = false;
+}
+
+function resetRegisterForm() {
+  registerForm.email = '';
+  registerForm.username = '';
+  registerForm.password = '';
+  registerForm.user_type = 'student';
+  registerForm.grade = '';
+}
+
+function handleUserTypeChange() {
+  touched.user_type = true;
+  validateField('user_type');
+  if (registerForm.user_type === 'teacher') {
+    registerForm.grade = '教师';
+    registerErrors.grade = '';
+    touched.grade = false;
+  } else if (!studentGradeOptions.includes(registerForm.grade)) {
+    registerForm.grade = '';
+  }
 }
 
 function openRegister() {
   state.error = '';
+  resetRegisterForm();
   clearRegisterErrors();
   mode.value = 'register';
 }
@@ -189,7 +245,9 @@ async function submitRegister() {
   const result = await register({
     email: registerForm.email,
     username: registerForm.username,
-    password: registerForm.password
+    password: registerForm.password,
+    user_type: registerForm.user_type,
+    grade: registerForm.user_type === 'teacher' ? '教师' : registerForm.grade
   });
   if (!result.ok) {
     Object.assign(registerErrors, result.fieldErrors || {});

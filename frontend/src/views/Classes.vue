@@ -106,6 +106,7 @@
             班级名
             <input v-model.trim="createForm.name" maxlength="64" placeholder="例如：基础日语（四）26春" />
           </label>
+          <p class="muted">班级名称不得超过20个字。</p>
           <p v-if="modalError" class="error">{{ modalError }}</p>
           <div class="modal-actions">
             <button class="ghost" type="button" @click="closeCreateDialog">取消</button>
@@ -146,6 +147,7 @@
             班级名
             <input v-model.trim="renameForm.name" maxlength="64" />
           </label>
+          <p class="muted">班级名称不得超过20个字。</p>
           <p v-if="renameError" class="error">{{ renameError }}</p>
           <div class="modal-actions">
             <button class="ghost" type="button" @click="closeRenameDialog">取消</button>
@@ -207,6 +209,10 @@ const renameError = ref('');
 const renameTargetId = ref(null);
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
+
+function textDisplayWidth(value) {
+  return Array.from(String(value || '')).reduce((total, char) => total + (/[\u0000-\u00ff]/.test(char) ? 1 : 2), 0);
+}
 
 function showToast(message, type = 'info') {
   toast.message = message;
@@ -315,6 +321,10 @@ async function submitCreateClass() {
     modalError.value = '请输入班级名';
     return;
   }
+  if (textDisplayWidth(createForm.name.trim()) > 40) {
+    modalError.value = '班级名称不得超过20个字';
+    return;
+  }
 
   saving.value = true;
   try {
@@ -368,6 +378,10 @@ async function submitRenameClass() {
   if (!renameTargetId.value) return;
   if (!renameForm.name.trim()) {
     renameError.value = '请输入班级名';
+    return;
+  }
+  if (textDisplayWidth(renameForm.name.trim()) > 40) {
+    renameError.value = '班级名称不得超过20个字';
     return;
   }
 

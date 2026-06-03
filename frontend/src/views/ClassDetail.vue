@@ -12,6 +12,14 @@
           </button>
           <button class="ghost" @click="refreshMaterials" :disabled="loadingMaterials">刷新</button>
         </div>
+        <button
+          v-if="canDissolveClass"
+          class="danger"
+          type="button"
+          @click="confirmDissolveClass"
+        >
+          解散班级
+        </button>
         <button class="ghost" type="button" @click="goBack">返回班级列表</button>
       </div>
     </div>
@@ -197,6 +205,7 @@
             班级名
             <input v-model.trim="renameForm.name" maxlength="64" />
           </label>
+          <p class="muted">班级名称不得超过20个字。</p>
           <p v-if="renameError" class="error">{{ renameError }}</p>
           <div class="modal-actions">
             <button class="ghost" type="button" @click="closeRenameDialog">取消</button>
@@ -217,6 +226,23 @@
           <button class="ghost" type="button" @click="closeRemoveMemberDialog">取消</button>
           <button class="danger" type="button" :disabled="savingAction" @click="submitRemoveMember">
             {{ savingAction ? '移除中...' : '确认移除' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="dissolveDialogOpen" class="overlay">
+      <div class="modal warning classroom-modal">
+        <div class="modal-header">
+          <h3>确认解散班级</h3>
+          <button class="ghost" type="button" @click="closeDissolveDialog">关闭</button>
+        </div>
+        <p>即将解散班级：<strong>{{ detail?.name }}</strong></p>
+        <p class="muted">解散后，班级成员和加入记录都会被删除，班级将不可继续访问。此操作不可恢复。</p>
+        <div class="modal-actions">
+          <button class="ghost" type="button" @click="closeDissolveDialog">取消</button>
+          <button class="danger" type="button" :disabled="savingAction" @click="submitDissolveClass">
+            {{ savingAction ? '解散中...' : '确认解散' }}
           </button>
         </div>
       </div>
@@ -319,6 +345,7 @@ const renameDialogOpen = ref(false);
 const renameError = ref('');
 const renameForm = reactive({ name: '' });
 const removeMemberDialog = ref(null);
+const dissolveDialogOpen = ref(false);
 const activeDetailView = ref('materials');
 const detailViewOptions = [
   { key: 'materials', label: '课程资料' },
@@ -347,6 +374,7 @@ const deleteMaterialDialog = ref(null);
 
 const isCreator = computed(() => !!detail.value?.is_creator);
 const canManageMaterials = computed(() => String(detail.value?.member_role || '').trim() === 'teacher');
+const canDissolveClass = computed(() => isTeacher.value && isCreator.value && activeDetailView.value === 'members');
 const materialsTotalPages = computed(() => Math.max(1, Math.ceil(materialsTotal.value / materialsPageSize.value)));
 const membersPage = ref(1);
 const membersPageSize = ref(12);
@@ -358,6 +386,10 @@ const pagedMembers = computed(() => {
   const start = (membersPage.value - 1) * membersPageSize.value;
   return members.slice(start, start + membersPageSize.value);
 });
+
+function textDisplayWidth(value) {
+  return Array.from(String(value || '')).reduce((total, char) => total + (/[\u0000-\u00ff]/.test(char) ? 1 : 2), 0);
+}
 
 function showToast(message, type = 'info') {
   toast.message = message;
@@ -511,6 +543,10 @@ async function submitRenameClass() {
     renameError.value = '请输入班级名';
     return;
   }
+  if (textDisplayWidth(renameForm.name.trim()) > 40) {
+    renameError.value = '班级名称不得超过20个字';
+    return;
+  }
 
   savingAction.value = true;
   try {
@@ -537,6 +573,14 @@ function closeRemoveMemberDialog() {
   removeMemberDialog.value = null;
 }
 
+function confirmDissolveClass() {
+  dissolveDialogOpen.value = true;
+}
+
+function closeDissolveDialog() {
+  dissolveDialogOpen.value = false;
+}
+
 async function submitRemoveMember() {
   if (!removeMemberDialog.value) return;
   savingAction.value = true;
@@ -547,6 +591,22 @@ async function submitRemoveMember() {
     closeRemoveMemberDialog();
     await loadDetail();
     showToast('学生已移除', 'success');
+  } catch (err) {
+    handleApiError(err);
+  } finally {
+    savingAction.value = false;
+  }
+}
+
+async function submitDissolveClass() {
+  if (!detail.value) return;
+  savingAction.value = true;
+  try {
+    await apiRequest(`/api/user/classes/${route.params.id}`, {
+      method: 'DELETE'
+    });
+    closeDissolveDialog();
+    router.push({ name: 'Classes' });
   } catch (err) {
     handleApiError(err);
   } finally {

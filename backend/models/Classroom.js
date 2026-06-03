@@ -3,6 +3,7 @@ const { userDb, readingMaterialsDb } = require('../database/db')
 
 const CLASS_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const CLASS_CODE_LENGTH = 8
+const CLASS_NAME_MAX_WIDTH = 40
 
 function normalizeText(value) {
   if (value === null || value === undefined) return null
@@ -12,6 +13,21 @@ function normalizeText(value) {
 
 function normalizeCode(value) {
   return String(value || '').trim().toUpperCase()
+}
+
+function textDisplayWidth(value) {
+  return Array.from(String(value || '')).reduce((total, char) => {
+    return total + (/[\u0000-\u00ff]/.test(char) ? 1 : 2)
+  }, 0)
+}
+
+function validateClassName(name) {
+  const normalizedName = normalizeText(name)
+  if (!normalizedName) throw new Error('班级名不能为空')
+  if (textDisplayWidth(normalizedName) > CLASS_NAME_MAX_WIDTH) {
+    throw new Error('班级名称不得超过20个字')
+  }
+  return normalizedName
 }
 
 function generateClassCode() {
@@ -75,8 +91,7 @@ function classRowById(classId) {
 
 class Classroom {
   static create({ teacherUserId, name }) {
-    const normalizedName = normalizeText(name)
-    if (!normalizedName) throw new Error('班级名不能为空')
+    const normalizedName = validateClassName(name)
 
     const teacherId = Number(teacherUserId)
     const code = issueUniqueClassCode()
@@ -294,8 +309,7 @@ class Classroom {
   }
 
   static updateName({ classId, teacherUserId, name }) {
-    const normalizedName = normalizeText(name)
-    if (!normalizedName) throw new Error('班级名不能为空')
+    const normalizedName = validateClassName(name)
     return userDb.prepare(`
       UPDATE classes
       SET

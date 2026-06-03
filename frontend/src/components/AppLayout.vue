@@ -1906,6 +1906,17 @@ async function openAssistantContext(contextType, id) {
   }
 }
 
+async function handleAssistantOpenConversationEvent(event) {
+  const conversationId = event?.detail?.id;
+  if (!showAssistantOrb.value || !conversationId) return;
+  assistantOwnedConversationSnapshot.value = null;
+  assistantHistoryOpen.value = false;
+  assistantHistoryRows.value = [];
+  assistantHistoryError.value = '';
+  await openAssistant();
+  await loadAssistantConversation(conversationId);
+}
+
 function handleAssistantContextEvent(event) {
   const detail = event?.detail || {};
   if (detail.contextType === 'vocabulary') {
@@ -1963,6 +1974,7 @@ onMounted(() => {
   window.addEventListener('resize', handleAssistantPanelBoundsChange);
   window.addEventListener('resize', clampAssistantOrb);
   window.addEventListener('assistant:context', handleAssistantContextEvent);
+  window.addEventListener('assistant:open-conversation', handleAssistantOpenConversationEvent);
 });
 
 watch(showAssistantOrb, (visible) => {
@@ -2007,5 +2019,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleAssistantPanelBoundsChange);
   window.removeEventListener('resize', clampAssistantOrb);
   window.removeEventListener('assistant:context', handleAssistantContextEvent);
+  window.removeEventListener('assistant:open-conversation', handleAssistantOpenConversationEvent);
 });
 </script>

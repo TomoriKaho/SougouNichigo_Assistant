@@ -14,6 +14,7 @@ function ensureInitialAccount({ username, password, email, role, userType, isIni
       email,
       role,
       user_type: userType,
+      grade: userType === 'teacher' ? '教师' : '高年级',
       is_initial_admin: isInitialAdmin,
       is_initial_dev: isInitialDev
     })
@@ -26,6 +27,7 @@ function ensureInitialAccount({ username, password, email, role, userType, isIni
     email,
     role,
     user_type: userType,
+    grade: userType === 'teacher' ? '教师' : '高年级',
     is_initial_admin: isInitialAdmin,
     is_initial_dev: isInitialDev
   })

@@ -3,10 +3,30 @@ const { userDb } = require('../database/db')
 
 const ALLOWED_ROLES = ['dev', 'admin', 'user']
 const ALLOWED_USER_TYPES = ['student', 'teacher']
+const STUDENT_GRADES = ['大一上', '大一下', '大二上', '大二下', '高年级']
+const TEACHER_GRADE = '教师'
+const ALLOWED_GRADES = [...STUDENT_GRADES, TEACHER_GRADE]
 
 function normalizeEmail(email) {
   const value = String(email || '').trim().toLowerCase()
   return value ? value : null
+}
+
+function normalizeUserType(userType) {
+  return ALLOWED_USER_TYPES.includes(userType) ? userType : 'student'
+}
+
+function normalizeGrade(userType, grade) {
+  const normalizedType = normalizeUserType(userType)
+  if (normalizedType === 'teacher') return TEACHER_GRADE
+  return STUDENT_GRADES.includes(grade) ? grade : '高年级'
+}
+
+function isGradeAllowedForUserType(userType, grade) {
+  const normalizedType = normalizeUserType(userType)
+  if (!ALLOWED_GRADES.includes(grade)) return false
+  if (normalizedType === 'teacher') return grade === TEACHER_GRADE
+  return STUDENT_GRADES.includes(grade)
 }
 
 function publicUser(row) {
@@ -24,7 +44,8 @@ class User {
     const username = String(payload.username || '').trim()
     const password = String(payload.password || '')
     const role = ALLOWED_ROLES.includes(payload.role) ? payload.role : 'user'
-    const userType = ALLOWED_USER_TYPES.includes(payload.user_type) ? payload.user_type : 'student'
+    const userType = normalizeUserType(payload.user_type)
+    const grade = normalizeGrade(userType, payload.grade)
 
     if (!username) throw new Error('用户名不能为空')
     if (!password) throw new Error('密码不能为空')
@@ -35,18 +56,20 @@ class User {
         password,
         email,
         user_type,
+        grade,
         role,
         is_initial_admin,
         is_initial_dev,
         created_at,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
     `).run(
       username,
       bcrypt.hashSync(password, 10),
       normalizeEmail(payload.email),
       userType,
+      grade,
       role,
       payload.is_initial_admin ? 1 : 0,
       payload.is_initial_dev ? 1 : 0
@@ -113,7 +136,7 @@ class User {
 
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
     const rows = userDb.prepare(`
-      SELECT id, username, email, user_type, role, is_initial_admin, is_initial_dev, created_at, updated_at
+      SELECT id, username, email, user_type, grade, role, is_initial_admin, is_initial_dev, created_at, updated_at
       FROM users
       ${where}
       ORDER BY datetime(created_at) DESC, id DESC
@@ -143,9 +166,19 @@ class User {
       params.push(bcrypt.hashSync(String(payload.password), 10))
     }
 
-    if (payload.user_type !== undefined) {
+    const nextUserType = payload.user_type !== undefined ? normalizeUserType(payload.user_type) : undefined
+    const nextGrade = payload.grade !== undefined
+      ? normalizeGrade(nextUserType !== undefined ? nextUserType : this.findRawById(id)?.user_type, payload.grade)
+      : undefined
+
+    if (nextUserType !== undefined) {
       updates.push('user_type = ?')
-      params.push(payload.user_type)
+      params.push(nextUserType)
+    }
+
+    if (nextGrade !== undefined || nextUserType !== undefined) {
+      updates.push('grade = ?')
+      params.push(nextGrade !== undefined ? nextGrade : normalizeGrade(nextUserType, undefined))
     }
 
     if (payload.role !== undefined) {
@@ -194,7 +227,13 @@ class User {
 }
 
 module.exports = {
+  ALLOWED_GRADES,
   User,
   ALLOWED_ROLES,
-  ALLOWED_USER_TYPES
+  ALLOWED_USER_TYPES,
+  STUDENT_GRADES,
+  TEACHER_GRADE,
+  isGradeAllowedForUserType,
+  normalizeGrade,
+  normalizeUserType
 }
