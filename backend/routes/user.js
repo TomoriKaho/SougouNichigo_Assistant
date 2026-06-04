@@ -173,6 +173,57 @@ router.get('/me', authMiddleware, (req, res) => {
   res.json({ success: true, user: req.user })
 })
 
+router.patch('/me', authMiddleware, (req, res) => {
+  const current = User.findRawById(req.user.id)
+  if (!current) return res.status(404).json({ success: false, error: '用户不存在' })
+
+  const payload = {}
+
+  if (req.body.username !== undefined) {
+    const username = String(req.body.username || '').trim()
+    if (!username) return fieldError(res, 400, 'username', '请输入用户名')
+    if (!USERNAME_PATTERN.test(username)) return fieldError(res, 400, 'username', '用户名需为6-15位字母或数字组合')
+    const existing = User.findRawByUsername(username)
+    if (existing && Number(existing.id) !== Number(req.user.id)) {
+      return fieldError(res, 409, 'username', '用户名已存在')
+    }
+    payload.username = username
+  }
+
+  if (req.body.password !== undefined && String(req.body.password || '').trim()) {
+    const password = String(req.body.password || '').trim()
+    if (!validatePassword(password)) {
+      return fieldError(res, 400, 'password', '密码需为8-20位，包含字母、数字、特殊符号中的至少两种')
+    }
+    payload.password = password
+  }
+
+  if (req.body.grade !== undefined) {
+    if (current.user_type === 'teacher') {
+      return fieldError(res, 400, 'grade', '教师用户无需修改年级')
+    }
+    const grade = String(req.body.grade || '').trim()
+    if (!grade) return fieldError(res, 400, 'grade', '请选择年级')
+    if (!isGradeAllowedForUserType(current.user_type, grade)) {
+      return fieldError(res, 400, 'grade', `学生年级仅支持：${STUDENT_GRADES.join('、')}`)
+    }
+    payload.grade = normalizeGrade(current.user_type, grade)
+  }
+
+  if (req.body.share_context_chats !== undefined || req.body.shareContextChats !== undefined) {
+    payload.share_context_chats = parseFlag(
+      req.body.share_context_chats !== undefined ? req.body.share_context_chats : req.body.shareContextChats
+    )
+  }
+
+  if (!Object.keys(payload).length) {
+    return res.status(400).json({ success: false, error: '没有可更新的内容' })
+  }
+
+  User.update(req.user.id, payload)
+  res.json({ success: true, user: User.findById(req.user.id) })
+})
+
 router.post('/assistant/conversations', authMiddleware, (req, res) => {
   const contextType = String(req.body.context_type || req.body.contextType || 'none')
   const contextId = req.body.context_id || req.body.contextId

@@ -140,6 +140,7 @@ class AssistantConversation {
         AND c.context_type = ?
         AND c.context_id = ?
         AND c.user_id != ?
+        AND COALESCE(u.share_context_chats, 1) = 1
     `
     const params = ['context_shared', normalizedContextType, normalizedContextId, Number(userId)]
 
@@ -166,6 +167,7 @@ class AssistantConversation {
     const total = userDb.prepare(`
       SELECT COUNT(*) AS total
       FROM assistant_conversations c
+      JOIN users u ON u.id = c.user_id
       ${where}
     `).get(...params).total
 
@@ -217,7 +219,13 @@ class AssistantConversation {
       FROM assistant_conversations c
       JOIN users u ON u.id = c.user_id
       WHERE c.id = ?
-        AND (c.user_id = ? OR c.visibility = 'context_shared')
+        AND (
+          c.user_id = ?
+          OR (
+            c.visibility = 'context_shared'
+            AND COALESCE(u.share_context_chats, 1) = 1
+          )
+        )
     `).get(Number(id), Number(userId)))
   }
 

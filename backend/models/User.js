@@ -34,6 +34,7 @@ function publicUser(row) {
   const { password, ...rest } = row
   return {
     ...rest,
+    share_context_chats: !!row.share_context_chats,
     is_initial_admin: !!row.is_initial_admin,
     is_initial_dev: !!row.is_initial_dev
   }
@@ -57,6 +58,7 @@ class User {
         email,
         user_type,
         grade,
+        share_context_chats,
         role,
         is_initial_admin,
         is_initial_dev,
@@ -70,6 +72,7 @@ class User {
       normalizeEmail(payload.email),
       userType,
       grade,
+      payload.share_context_chats === false ? 0 : 1,
       role,
       payload.is_initial_admin ? 1 : 0,
       payload.is_initial_dev ? 1 : 0
@@ -137,6 +140,7 @@ class User {
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
     const rows = userDb.prepare(`
       SELECT id, username, email, user_type, grade, role, is_initial_admin, is_initial_dev, created_at, updated_at
+      , share_context_chats
       FROM users
       ${where}
       ORDER BY datetime(created_at) DESC, id DESC
@@ -184,6 +188,11 @@ class User {
     if (payload.role !== undefined) {
       updates.push('role = ?')
       params.push(payload.role)
+    }
+
+    if (payload.share_context_chats !== undefined) {
+      updates.push('share_context_chats = ?')
+      params.push(payload.share_context_chats ? 1 : 0)
     }
 
     if (payload.is_initial_admin !== undefined) {

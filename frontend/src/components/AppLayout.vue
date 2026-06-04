@@ -43,6 +43,7 @@
           <span v-if="isPrivileged" class="chip identity-chip">{{ user.username || user.email }}</span>
           <span v-if="isPrivileged" class="chip role-chip" :class="roleClass">{{ roleLabel }}</span>
           <span class="chip type-chip" :class="userTypeClass">{{ userTypeLabel }}</span>
+          <button v-if="showAssistantTopbarButton" class="ghost assistant-topbar-trigger" @click="openAssistantFromTopbar">AI助手</button>
           <button class="ghost feedback-trigger" @click="openFeedback">我要反馈</button>
           <button class="ghost" @click="handleLogout">退出</button>
         </div>
@@ -50,11 +51,11 @@
       <main ref="contentRef" class="content">
         <router-view />
         <div
-          v-if="showAssistantOrb"
+          v-if="showAssistantWidget"
           class="assistant-widget"
         >
           <div
-            v-if="assistantHover && !assistantOpen"
+            v-if="showAssistantOrb && assistantHover && !assistantOpen"
             class="assistant-hint-bubble"
             :style="assistantHintStyle"
             aria-hidden="true"
@@ -65,7 +66,10 @@
           <div
             v-if="assistantOpen"
             class="assistant-chat-panel"
-            :class="{ 'assistant-chat-panel-snapback': assistantPanelSnapback }"
+            :class="{
+              'assistant-chat-panel-snapback': assistantPanelSnapback,
+              'assistant-chat-panel-topbar': assistantLaunchSource === 'topbar'
+            }"
             role="dialog"
             aria-label="AI 助手"
             :style="assistantPanelStyle"
@@ -92,10 +96,29 @@
               <button class="ghost assistant-close-button" type="button" @click="closeAssistant">关闭</button>
             </div>
 
-            <div v-if="assistantHistoryOpen" class="assistant-history-screen">
+            <div v-if="assistantHistoryOpen" class="assistant-history-screen" @pointerdown.capture="handleAssistantHistoryPointerDown">
               <div class="assistant-history-header">
                 <strong>{{ assistantHistoryTitle }}</strong>
                 <div class="assistant-history-header-actions">
+                  <div v-if="assistantHistoryTotalPages > 1" class="assistant-history-pagination">
+                    <button
+                      class="ghost assistant-history-pagination-button"
+                      type="button"
+                      :disabled="assistantHistoryLoading || assistantHistoryPage <= 1"
+                      @click="changeAssistantHistoryPage(assistantHistoryPage - 1)"
+                    >
+                      <
+                    </button>
+                    <span class="assistant-history-pagination-text">第 {{ assistantHistoryPage }} / {{ assistantHistoryTotalPages }} 页</span>
+                    <button
+                      class="ghost assistant-history-pagination-button"
+                      type="button"
+                      :disabled="assistantHistoryLoading || assistantHistoryPage >= assistantHistoryTotalPages"
+                      @click="changeAssistantHistoryPage(assistantHistoryPage + 1)"
+                    >
+                      >
+                    </button>
+                  </div>
                   <button class="ghost" type="button" @click="refreshAssistantHistoryView" :disabled="assistantHistoryLoading">刷新</button>
                   <button class="ghost" type="button" @click="handleAssistantHistoryBack">返回</button>
                 </div>
@@ -294,6 +317,7 @@
           </div>
 
           <button
+            v-if="showAssistantOrb"
             class="assistant-orb"
             :class="{ 'assistant-orb-dragging': assistantOrbDragging }"
             :style="assistantOrbStyle"
@@ -411,16 +435,22 @@ const assistantResizeDirections = ['n', 'e', 's', 'w', 'ne', 'nw', 'se', 'sw'];
 const assistantOrbSize = 96;
 const assistantOrbDefaultOffset = { right: 38, bottom: 26 };
 const assistantDefaultPanelSize = { width: 360, height: 620 };
+const ASSISTANT_DOCKED_KEY = 'assistant:dockedToTopbar';
 const assistantOrbPosition = reactive({ left: 0, top: 0 });
 const assistantOrbReady = ref(false);
 const assistantOrbDragging = ref(false);
 const assistantOrbDragged = ref(false);
+const assistantDockedToTopbar = ref(localStorage.getItem(ASSISTANT_DOCKED_KEY) === '1');
+const assistantLaunchSource = ref(assistantDockedToTopbar.value ? 'topbar' : 'orb');
 const assistantActiveConversation = ref(null);
 const assistantHistoryOpen = ref(false);
 const assistantHistoryMode = ref('own');
 const assistantHistoryLoading = ref(false);
 const assistantHistoryRows = ref([]);
 const assistantHistoryError = ref('');
+const assistantHistoryPage = ref(1);
+const assistantHistoryPageSize = 12;
+const assistantHistoryTotal = ref(0);
 const assistantSharedHistoryAvailable = ref(false);
 const assistantRenameConversationId = ref(null);
 const assistantRenameDraft = ref('');
@@ -490,15 +520,19 @@ const roleClass = computed(() => {
   return user.value?.role || 'user';
 });
 const userTypeLabel = computed(() => {
+  if (user.value?.user_type === 'student') {
+    return `学生用户：${user.value?.grade || '高年级'}`;
+  }
   if (user.value?.user_type === 'teacher') return '教师用户';
-  if (user.value?.user_type === 'student') return '学生用户';
   return user.value?.user_type || '-';
 });
 const userTypeClass = computed(() => {
   const normalized = String(user.value?.user_type || '').trim().toLowerCase();
   return normalized ? `type-${normalized}` : 'type-unknown';
 });
-const showAssistantOrb = computed(() => Boolean(user.value && isUserMode.value));
+const showAssistantOrb = computed(() => Boolean(user.value && isUserMode.value && !assistantDockedToTopbar.value));
+const showAssistantTopbarButton = computed(() => Boolean(user.value && isUserMode.value && assistantDockedToTopbar.value));
+const showAssistantWidget = computed(() => Boolean(user.value && isUserMode.value && (showAssistantOrb.value || showAssistantTopbarButton.value || assistantOpen.value)));
 const assistantBusy = computed(() => assistantState.value === 'thinking' || assistantState.value === 'replying');
 const assistantHappyActive = computed(() => !assistantBusy.value && (assistantHover.value || assistantOpen.value));
 const assistantCurrentImage = computed(() => {
@@ -526,6 +560,7 @@ const assistantHasContext = computed(() => {
 const assistantCanViewSharedHistory = computed(() => assistantHasContext.value && assistantSharedHistoryAvailable.value);
 const assistantHistoryTitle = computed(() => assistantHistoryMode.value === 'shared' ? '其他用户聊天历史' : '对话历史');
 const assistantHistoryEmptyText = computed(() => assistantHistoryMode.value === 'shared' ? '暂无其他用户聊天历史' : '暂无对话历史');
+const assistantHistoryTotalPages = computed(() => Math.max(1, Math.ceil(assistantHistoryTotal.value / assistantHistoryPageSize)));
 const assistantOrbStyle = computed(() => ({
   left: `${assistantOrbPosition.left}px`,
   top: `${assistantOrbPosition.top}px`
@@ -823,19 +858,25 @@ async function loadAssistantHistory() {
   assistantHistoryError.value = '';
   try {
     const endpoint = mode === 'shared' ? '/api/user/assistant/conversations/shared' : '/api/user/assistant/conversations';
-    const params = { limit: 80 };
+    const params = {
+      limit: assistantHistoryPageSize,
+      offset: (assistantHistoryPage.value - 1) * assistantHistoryPageSize
+    };
     if (mode === 'shared') {
       const contextParams = currentAssistantContextParams();
       if (!contextParams) {
         assistantHistoryRows.value = [];
+        assistantHistoryTotal.value = 0;
         return;
       }
       Object.assign(params, contextParams);
     }
     const data = await apiRequest(endpoint, { params, timeout: 30000 });
     assistantHistoryRows.value = data.rows || [];
+    assistantHistoryTotal.value = Number(data.total || 0);
   } catch (err) {
     assistantHistoryError.value = err instanceof ApiError ? err.message : '加载失败';
+    assistantHistoryTotal.value = 0;
   } finally {
     assistantHistoryLoading.value = false;
   }
@@ -847,6 +888,7 @@ async function toggleAssistantHistory() {
     return;
   }
   assistantHistoryMode.value = 'own';
+  assistantHistoryPage.value = 1;
   assistantHistoryOpen.value = true;
   await loadAssistantHistory();
 }
@@ -877,6 +919,7 @@ async function openAssistantSharedHistory() {
     captureAssistantOwnedConversationSnapshot();
   }
   assistantHistoryMode.value = 'shared';
+  assistantHistoryPage.value = 1;
   assistantHistoryOpen.value = true;
   await loadAssistantHistory();
 }
@@ -917,11 +960,17 @@ async function deleteAssistantConversation(item) {
       method: 'DELETE',
       timeout: 30000
     });
-    if (Number(assistantActiveConversation.value?.id) === Number(item.id)) {
-      resetAssistantDraftConversation();
-    }
-    assistantHistoryRows.value = assistantHistoryRows.value.filter((row) => Number(row.id) !== Number(item.id));
-    showToast('已删除', 'success');
+  if (Number(assistantActiveConversation.value?.id) === Number(item.id)) {
+    resetAssistantDraftConversation();
+  }
+  const nextTotal = Math.max(0, assistantHistoryTotal.value - 1);
+  const nextTotalPages = Math.max(1, Math.ceil(nextTotal / assistantHistoryPageSize));
+  assistantHistoryTotal.value = nextTotal;
+  if (assistantHistoryPage.value > nextTotalPages) {
+    assistantHistoryPage.value = nextTotalPages;
+  }
+  await loadAssistantHistory();
+  showToast('已删除', 'success');
   } catch (err) {
     showToast(err instanceof ApiError ? err.message : '删除失败', 'error');
   }
@@ -930,6 +979,12 @@ async function deleteAssistantConversation(item) {
 function cancelAssistantConversationRename() {
   assistantRenameConversationId.value = null;
   assistantRenameDraft.value = '';
+}
+
+function handleAssistantHistoryPointerDown(event) {
+  if (!assistantRenameConversationId.value) return;
+  if (event.target?.closest?.('.assistant-history-rename-input')) return;
+  assistantRenameInputRef.value?.blur?.();
 }
 
 function startAssistantConversationRename(item) {
@@ -943,6 +998,13 @@ function startAssistantConversationRename(item) {
       input.select?.();
     }
   });
+}
+
+function changeAssistantHistoryPage(nextPage) {
+  const normalized = Math.min(Math.max(1, Number(nextPage) || 1), assistantHistoryTotalPages.value);
+  if (normalized === assistantHistoryPage.value) return;
+  assistantHistoryPage.value = normalized;
+  loadAssistantHistory();
 }
 
 async function submitAssistantConversationRename(item) {
@@ -1330,6 +1392,14 @@ function assistantDefaultPanelPlacement() {
   };
 }
 
+function assistantTopbarPanelPlacement() {
+  const metrics = assistantContentMetrics();
+  return {
+    left: Math.max(12, metrics.width - assistantDefaultPanelSize.width - 18),
+    top: 12
+  };
+}
+
 function assistantPanelPlacementFromOrb() {
   return {
     left: assistantOrbPosition.left + assistantOrbSize - assistantDefaultPanelSize.width + 16,
@@ -1505,7 +1575,7 @@ function clearAssistantTimers() {
 }
 
 async function openAssistant() {
-  ensureAssistantOrbPosition();
+  if (showAssistantOrb.value) ensureAssistantOrbPosition();
   clearAssistantPanelSnapbackTimer();
   assistantPanelSnapback.value = false;
   assistantPanelMaximized.value = false;
@@ -1514,14 +1584,20 @@ async function openAssistant() {
   assistantPanelSize.height = assistantDefaultPanelSize.height;
   assistantPanelReady.value = true;
 
-  const desired = assistantOrbDragged.value ? assistantPanelPlacementFromOrb() : assistantDefaultPanelPlacement();
+  const desired = assistantLaunchSource.value === 'topbar'
+    ? assistantTopbarPanelPlacement()
+    : (assistantOrbDragged.value ? assistantPanelPlacementFromOrb() : assistantDefaultPanelPlacement());
   assistantPanelPosition.left = desired.left;
   assistantPanelPosition.top = desired.top;
   assistantOpen.value = true;
 
   await nextTick();
 
-  if (!assistantOrbDragged.value || assistantPlacementIsValid(desired.left, desired.top, assistantPanelSize.width, assistantPanelSize.height)) {
+  if (
+    assistantLaunchSource.value === 'topbar' ||
+    !assistantOrbDragged.value ||
+    assistantPlacementIsValid(desired.left, desired.top, assistantPanelSize.width, assistantPanelSize.height)
+  ) {
     clampAssistantPanel();
     return;
   }
@@ -1542,6 +1618,7 @@ async function openAssistant() {
 }
 
 async function openAssistantFromOrb() {
+  assistantLaunchSource.value = 'orb';
   assistantOwnedConversationSnapshot.value = null;
   assistantHistoryOpen.value = false;
   assistantHistoryRows.value = [];
@@ -1550,9 +1627,21 @@ async function openAssistantFromOrb() {
   await openAssistant();
 }
 
+async function openAssistantFromTopbar() {
+  assistantLaunchSource.value = 'topbar';
+  assistantOwnedConversationSnapshot.value = null;
+  assistantHistoryOpen.value = false;
+  assistantHistoryRows.value = [];
+  assistantHistoryError.value = '';
+  resetAssistantDraftConversation();
+  assistantHover.value = false;
+  await openAssistant();
+}
+
 function closeAssistant() {
   assistantOpen.value = false;
   assistantHistoryOpen.value = false;
+  assistantLaunchSource.value = assistantDockedToTopbar.value ? 'topbar' : 'orb';
   stopAssistantInteraction();
   cancelAssistantOrbPress();
   assistantPanelSnapback.value = false;
@@ -1885,13 +1974,14 @@ function sendAssistantQuickQuestion(question) {
 }
 
 async function openAssistantContext(contextType, id) {
-  if (!showAssistantOrb.value) return;
+  if (!isUserMode.value) return;
   if (!id || assistantBusy.value) {
     showToast(assistantBusy.value ? 'AI 正在回复中' : '条目信息无效', 'error');
     return;
   }
 
   try {
+    assistantLaunchSource.value = assistantDockedToTopbar.value ? 'topbar' : 'orb';
     assistantOwnedConversationSnapshot.value = null;
     const data = await apiRequest(`/api/user/assistant/context/${contextType}/${id}`, {
       method: 'POST',
@@ -1908,7 +1998,8 @@ async function openAssistantContext(contextType, id) {
 
 async function handleAssistantOpenConversationEvent(event) {
   const conversationId = event?.detail?.id;
-  if (!showAssistantOrb.value || !conversationId) return;
+  if (!isUserMode.value || !conversationId) return;
+  assistantLaunchSource.value = assistantDockedToTopbar.value ? 'topbar' : 'orb';
   assistantOwnedConversationSnapshot.value = null;
   assistantHistoryOpen.value = false;
   assistantHistoryRows.value = [];
@@ -1918,6 +2009,7 @@ async function handleAssistantOpenConversationEvent(event) {
 }
 
 function handleAssistantContextEvent(event) {
+  assistantLaunchSource.value = assistantDockedToTopbar.value ? 'topbar' : 'orb';
   const detail = event?.detail || {};
   if (detail.contextType === 'vocabulary') {
     openAssistantContext('vocabulary', detail.id);
@@ -1925,6 +2017,16 @@ function handleAssistantContextEvent(event) {
   }
   if (detail.contextType === 'grammar') {
     openAssistantContext('grammar', detail.id);
+  }
+}
+
+function handleAssistantDockingChange(event) {
+  const nextValue = Boolean(event?.detail?.dockedToTopbar);
+  assistantDockedToTopbar.value = nextValue;
+  localStorage.setItem(ASSISTANT_DOCKED_KEY, nextValue ? '1' : '0');
+  if (!nextValue) ensureAssistantOrbPosition();
+  if (!assistantOpen.value) {
+    assistantLaunchSource.value = nextValue ? 'topbar' : 'orb';
   }
 }
 
@@ -1975,6 +2077,7 @@ onMounted(() => {
   window.addEventListener('resize', clampAssistantOrb);
   window.addEventListener('assistant:context', handleAssistantContextEvent);
   window.addEventListener('assistant:open-conversation', handleAssistantOpenConversationEvent);
+  window.addEventListener('assistant:docking-changed', handleAssistantDockingChange);
 });
 
 watch(showAssistantOrb, (visible) => {
@@ -2020,5 +2123,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', clampAssistantOrb);
   window.removeEventListener('assistant:context', handleAssistantContextEvent);
   window.removeEventListener('assistant:open-conversation', handleAssistantOpenConversationEvent);
+  window.removeEventListener('assistant:docking-changed', handleAssistantDockingChange);
 });
 </script>

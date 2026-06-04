@@ -163,7 +163,7 @@ function suggestedQuestions(conversation = {}) {
     return [
       {
         key: 'grammar_examples',
-        label: '可以给出一些新的例句吗？',
+        label: '可以给出一些补充例句吗？',
         message: '可以给出一些这个用法的例句吗？',
         template_key: 'grammar_examples'
       },

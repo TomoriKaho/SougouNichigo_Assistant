@@ -57,6 +57,7 @@ function initUserDatabase() {
       email TEXT,
       user_type TEXT DEFAULT 'student',
       grade TEXT DEFAULT '高年级',
+      share_context_chats INTEGER DEFAULT 1,
       role TEXT DEFAULT 'user',
       is_initial_admin INTEGER DEFAULT 0,
       is_initial_dev INTEGER DEFAULT 0,
@@ -68,6 +69,7 @@ function initUserDatabase() {
   ensureColumn(userDb, 'users', 'email', 'email TEXT')
   ensureColumn(userDb, 'users', 'user_type', "user_type TEXT DEFAULT 'student'")
   ensureColumn(userDb, 'users', 'grade', "grade TEXT DEFAULT '高年级'")
+  ensureColumn(userDb, 'users', 'share_context_chats', 'share_context_chats INTEGER DEFAULT 1')
   ensureColumn(userDb, 'users', 'role', "role TEXT DEFAULT 'user'")
   ensureColumn(userDb, 'users', 'is_initial_admin', 'is_initial_admin INTEGER DEFAULT 0')
   ensureColumn(userDb, 'users', 'is_initial_dev', 'is_initial_dev INTEGER DEFAULT 0')
@@ -86,6 +88,14 @@ function initUserDatabase() {
       WHEN user_type = 'teacher' THEN '教师'
       WHEN grade IS NULL OR trim(grade) = '' OR grade = '教师' THEN '高年级'
       ELSE grade
+    END
+  `)
+  userDb.exec(`
+    UPDATE users
+    SET share_context_chats = CASE
+      WHEN share_context_chats IS NULL THEN 1
+      WHEN share_context_chats IN (0, 1) THEN share_context_chats
+      ELSE 1
     END
   `)
 
