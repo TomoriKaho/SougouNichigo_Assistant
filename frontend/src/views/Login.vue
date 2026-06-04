@@ -1,6 +1,6 @@
 <template>
   <main class="login-page">
-    <section class="login-card">
+    <section class="login-card" :class="{ 'login-card-register': mode === 'register' }">
       <h1>登录到 総日ナビ</h1>
 
       <form v-if="mode === 'login'" @submit.prevent="loginMethod === 'password' ? submitUserLogin() : submitEmailCodeLogin()">
@@ -44,7 +44,7 @@
               @input="validateLoginEmailFieldIfTouched('email')"
             />
             <span :class="loginEmailErrors.email ? 'field-error' : 'field-hint'">
-              {{ loginEmailErrors.email || '仅支持 pku.edu.cn 或其子域邮箱。' }}
+              {{ loginEmailErrors.email || '仅支持PKU邮箱。' }}
             </span>
           </label>
           <label>
@@ -92,7 +92,7 @@
             @input="validateFieldIfTouched('email')"
           />
           <span :class="registerErrors.email ? 'field-error' : 'field-hint'">
-            {{ registerErrors.email || '仅支持 pku.edu.cn 或其子域邮箱。' }}
+            {{ registerErrors.email || '仅支持PKU邮箱。' }}
           </span>
         </label>
         <label>
@@ -264,7 +264,7 @@ function validateField(field) {
   if (field === 'email') {
     if (!registerForm.email) registerErrors.email = '请输入邮箱地址';
     else if (!emailPattern.test(registerForm.email)) registerErrors.email = '请输入有效的邮箱地址';
-    else if (!isPkuEmail(registerForm.email)) registerErrors.email = '仅支持 pku.edu.cn 或其子域邮箱';
+    else if (!isPkuEmail(registerForm.email)) registerErrors.email = '仅支持PKU邮箱';
     else registerErrors.email = '';
   }
 
@@ -376,7 +376,7 @@ function validateLoginEmailField(field) {
   if (field === 'email') {
     if (!loginEmailForm.email) loginEmailErrors.email = '请输入邮箱地址';
     else if (!emailPattern.test(loginEmailForm.email)) loginEmailErrors.email = '请输入有效的邮箱地址';
-    else if (!isPkuEmail(loginEmailForm.email)) loginEmailErrors.email = '仅支持 pku.edu.cn 或其子域邮箱';
+    else if (!isPkuEmail(loginEmailForm.email)) loginEmailErrors.email = '仅支持PKU邮箱';
     else loginEmailErrors.email = '';
   }
 

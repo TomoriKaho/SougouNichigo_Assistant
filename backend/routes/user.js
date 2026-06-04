@@ -115,7 +115,7 @@ router.post('/email-code', async (req, res) => {
 
   if (!email) return fieldError(res, 400, 'email', '请输入邮箱地址')
   if (!EMAIL_PATTERN.test(email)) return fieldError(res, 400, 'email', '请输入有效的邮箱地址')
-  if (!emailCodeService.isPkuEmail(email)) return fieldError(res, 400, 'email', '仅支持 pku.edu.cn 或其子域邮箱')
+  if (!emailCodeService.isPkuEmail(email)) return fieldError(res, 400, 'email', '仅支持PKU邮箱')
   if (!purpose) return fieldError(res, 400, 'purpose', '验证码用途无效')
 
   if (purpose === 'register' && User.findRawByEmail(email)) {
@@ -159,7 +159,7 @@ router.post('/register', (req, res) => {
 
   if (!email) return fieldError(res, 400, 'email', '请输入邮箱地址')
   if (!EMAIL_PATTERN.test(email)) return fieldError(res, 400, 'email', '请输入有效的邮箱地址')
-  if (!emailCodeService.isPkuEmail(email)) return fieldError(res, 400, 'email', '仅支持 pku.edu.cn 或其子域邮箱')
+  if (!emailCodeService.isPkuEmail(email)) return fieldError(res, 400, 'email', '仅支持PKU邮箱')
   if (!emailCode) return fieldError(res, 400, 'emailCode', '请输入邮箱验证码')
   if (!username) return fieldError(res, 400, 'username', '请输入用户名')
   if (!USERNAME_PATTERN.test(username)) return fieldError(res, 400, 'username', '用户名需为6-15位字母或数字组合')
@@ -242,7 +242,7 @@ router.post('/login/email-code', (req, res) => {
 
   if (!email) return fieldError(res, 400, 'email', '请输入邮箱地址')
   if (!EMAIL_PATTERN.test(email)) return fieldError(res, 400, 'email', '请输入有效的邮箱地址')
-  if (!emailCodeService.isPkuEmail(email)) return fieldError(res, 400, 'email', '仅支持 pku.edu.cn 或其子域邮箱')
+  if (!emailCodeService.isPkuEmail(email)) return fieldError(res, 400, 'email', '仅支持PKU邮箱')
   if (!emailCode) return fieldError(res, 400, 'emailCode', '请输入邮箱验证码')
 
   const user = User.findRawByEmail(email)

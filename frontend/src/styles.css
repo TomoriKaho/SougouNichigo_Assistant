@@ -1394,12 +1394,79 @@ button.ghost:hover {
   margin-top: 2px;
 }
 
+.login-card-register {
+  max-width: 460px;
+  padding: 20px 24px;
+}
+
+.login-card-register h1 {
+  margin-bottom: 10px;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.login-card-register form {
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.login-card-register label {
+  gap: 3px;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.login-card-register input,
+.login-card-register select,
+.login-card-register button {
+  min-height: 36px;
+  font-size: 14px;
+}
+
+.login-card-register input,
+.login-card-register select {
+  padding: 6px 10px;
+}
+
+.login-card-register .email-code-row {
+  grid-template-columns: minmax(0, 1fr) 108px;
+  gap: 8px;
+}
+
+.login-card-register .email-code-row button {
+  width: 108px;
+  padding: 0 8px;
+}
+
+.login-card-register .field-hint,
+.login-card-register .field-error {
+  font-size: 11px;
+  line-height: 1.15;
+}
+
+.login-card-register .login-register-actions {
+  gap: 8px;
+  margin-top: 0;
+}
+
 @media (max-width: 520px) {
   .email-code-row {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .email-code-row button {
+    width: 100%;
+  }
+
+  .login-card-register {
+    padding: 18px;
+  }
+
+  .login-card-register .email-code-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .login-card-register .email-code-row button {
     width: 100%;
   }
 }
