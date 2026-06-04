@@ -106,6 +106,13 @@
             班级名
             <input v-model.trim="createForm.name" maxlength="64" placeholder="例如：基础日语（四）26春" />
           </label>
+          <div class="class-create-option-row">
+            <span>允许学生上传课程资料</span>
+            <label class="switch" aria-label="是否允许学生上传课程资料">
+              <input v-model="createForm.allow_student_uploads" type="checkbox" />
+              <span class="slider"></span>
+            </label>
+          </div>
           <p class="muted">班级名称不得超过20个字。</p>
           <p v-if="modalError" class="error">{{ modalError }}</p>
           <div class="modal-actions">
@@ -202,7 +209,7 @@ const renameDialogOpen = ref(false);
 const dissolveDialog = ref(null);
 const toast = reactive({ visible: false, message: '', type: 'info' });
 
-const createForm = reactive({ name: '' });
+const createForm = reactive({ name: '', allow_student_uploads: false });
 const joinForm = reactive({ code: '' });
 const renameForm = reactive({ name: '' });
 const renameError = ref('');
@@ -273,6 +280,7 @@ function jumpToPage() {
 
 function openCreateDialog() {
   createForm.name = '';
+  createForm.allow_student_uploads = false;
   modalError.value = '';
   createDialogOpen.value = true;
 }
@@ -330,7 +338,10 @@ async function submitCreateClass() {
   try {
     await apiRequest('/api/user/classes', {
       method: 'POST',
-      body: { name: createForm.name.trim() }
+      body: {
+        name: createForm.name.trim(),
+        allow_student_uploads: createForm.allow_student_uploads
+      }
     });
     closeCreateDialog();
     page.value = 1;

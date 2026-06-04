@@ -49,6 +49,53 @@ async function login(credentials, mode = 'user') {
   }
 }
 
+async function loginWithEmailCode(credentials) {
+  state.loading = true;
+  state.error = '';
+  try {
+    const email = String(credentials.email || '').trim();
+    const emailCode = String(credentials.emailCode || credentials.code || '').trim();
+    if (!email || !emailCode) throw new Error('请输入邮箱和验证码');
+    const data = await apiRequest('/api/user/login/email-code', {
+      method: 'POST',
+      body: { email, emailCode },
+      auth: false
+    });
+
+    state.token = data.token;
+    state.user = data.user;
+    state.mode = 'user';
+    setAuthSession(state.token, 'user');
+    return { ok: true, fieldErrors: null };
+  } catch (err) {
+    state.error = err instanceof ApiError ? err.message : err.message || '登录失败';
+    return {
+      ok: false,
+      fieldErrors: err instanceof ApiError ? err.fieldErrors : null
+    };
+  } finally {
+    state.loading = false;
+  }
+}
+
+async function sendEmailCode(email, purpose = 'register') {
+  state.error = '';
+  try {
+    const data = await apiRequest('/api/user/email-code', {
+      method: 'POST',
+      body: { email, purpose },
+      auth: false
+    });
+    return { ok: true, data, fieldErrors: null };
+  } catch (err) {
+    state.error = err instanceof ApiError ? err.message : err.message || '验证码发送失败';
+    return {
+      ok: false,
+      fieldErrors: err instanceof ApiError ? err.fieldErrors : null
+    };
+  }
+}
+
 async function register(payload) {
   state.loading = true;
   state.error = '';
@@ -114,6 +161,8 @@ export function useAuth() {
   return {
     state,
     login,
+    loginWithEmailCode,
+    sendEmailCode,
     register,
     logout,
     fetchMe,

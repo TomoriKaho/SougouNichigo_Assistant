@@ -65,7 +65,7 @@
     </div>
 
     <div class="study-footer-bar">
-      <span class="muted study-footer-total">共 {{ total }} 条</span>
+      <span class="study-footer-spacer" aria-hidden="true"></span>
       <div class="pagination management-inline-pagination study-footer-pagination">
         <button class="ghost" :disabled="page === 1 || loading" @click="changePage(page - 1)">上一页</button>
         <label class="management-pagination-jump" for="course-study-page-jump">
@@ -85,6 +85,7 @@
         </label>
         <button class="ghost" :disabled="page === totalPages || loading" @click="changePage(page + 1)">下一页</button>
       </div>
+      <span class="muted study-footer-total">共 {{ total }} 条</span>
       <span class="study-footer-spacer" aria-hidden="true"></span>
     </div>
 

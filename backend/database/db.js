@@ -82,6 +82,22 @@ function initUserDatabase() {
   `)
   userDb.exec('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)')
   userDb.exec('CREATE INDEX IF NOT EXISTS idx_users_type ON users(user_type)')
+
+  userDb.exec(`
+    CREATE TABLE IF NOT EXISTS email_verification_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      consumed_at TEXT,
+      attempt_count INTEGER DEFAULT 0,
+      request_ip TEXT,
+      created_at TEXT DEFAULT (datetime('now', 'localtime'))
+    )
+  `)
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_email_codes_lookup ON email_verification_codes(email, purpose, consumed_at, expires_at)')
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_email_codes_created_at ON email_verification_codes(created_at)')
   userDb.exec(`
     UPDATE users
     SET grade = CASE
@@ -105,11 +121,13 @@ function initUserDatabase() {
       name TEXT NOT NULL,
       code TEXT UNIQUE NOT NULL,
       teacher_user_id INTEGER NOT NULL,
+      allow_student_uploads INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (teacher_user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `)
+  ensureColumn(userDb, 'classes', 'allow_student_uploads', 'allow_student_uploads INTEGER DEFAULT 0')
 
   const membershipTable = userDb
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'class_memberships'")

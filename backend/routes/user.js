@@ -9,6 +9,7 @@ const { Vocabulary } = require('../models/Vocabulary')
 const { Classroom } = require('../models/Classroom')
 const { authMiddleware, signUserToken, USER_JWT_EXPIRES_IN } = require('../middleware/auth')
 const assistantService = require('../services/assistantService')
+const emailCodeService = require('../services/emailCodeService')
 
 const USERNAME_PATTERN = /^[A-Za-z0-9]{6,15}$/
 const PASSWORD_PATTERN = /^[A-Za-z0-9!@#$%^&*()_+\-.]{8,20}$/
@@ -20,6 +21,15 @@ function fieldError(res, status, field, message) {
     error: message,
     errors: { [field]: message }
   })
+}
+
+function serviceFieldError(res, error, fallbackField = 'emailCode') {
+  return fieldError(res, error.status || 400, error.field || fallbackField, error.message || '验证码校验失败')
+}
+
+function clientIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+  return forwarded || req.ip || req.socket?.remoteAddress || ''
 }
 
 function parseLimit(value, fallback = 50, max = 200) {
@@ -75,6 +85,14 @@ function publicReadingMaterial(row) {
   return publicItem
 }
 
+function isReadingMaterialOwner(item, userId) {
+  return Number(item?.created_by) === Number(userId)
+}
+
+function canModifyClassMaterial(classId, item, userId) {
+  return Classroom.canManageMaterials(classId, { userId }) || isReadingMaterialOwner(item, userId)
+}
+
 function validatePassword(value) {
   const password = String(value || '').trim()
   const hasLetter = /[A-Za-z]/.test(password)
@@ -91,10 +109,49 @@ function requireTeacher(req, res, next) {
   next()
 }
 
+router.post('/email-code', async (req, res) => {
+  const email = emailCodeService.normalizeEmail(req.body.email)
+  const purpose = emailCodeService.normalizePurpose(req.body.purpose || 'register')
+
+  if (!email) return fieldError(res, 400, 'email', '请输入邮箱地址')
+  if (!EMAIL_PATTERN.test(email)) return fieldError(res, 400, 'email', '请输入有效的邮箱地址')
+  if (!emailCodeService.isPkuEmail(email)) return fieldError(res, 400, 'email', '仅支持 pku.edu.cn 或其子域邮箱')
+  if (!purpose) return fieldError(res, 400, 'purpose', '验证码用途无效')
+
+  if (purpose === 'register' && User.findRawByEmail(email)) {
+    return fieldError(res, 409, 'email', '该邮箱已被注册')
+  }
+
+  if (purpose === 'login' && !User.findRawByEmail(email)) {
+    return res.json({
+      success: true,
+      message: '如果该邮箱已注册，验证码将发送至该邮箱'
+    })
+  }
+
+  try {
+    const result = await emailCodeService.sendCode({
+      email,
+      purpose,
+      ip: clientIp(req)
+    })
+    res.json({
+      success: true,
+      expiresIn: result.expiresIn,
+      message: '验证码已发送，请查收邮箱'
+    })
+  } catch (error) {
+    if (error.status || error.field) return serviceFieldError(res, error, 'email')
+    console.error('发送邮箱验证码失败:', error)
+    return res.status(500).json({ success: false, error: '验证码发送失败，请稍后重试' })
+  }
+})
+
 router.post('/register', (req, res) => {
   const username = String(req.body.username || '').trim()
   const email = String(req.body.email || '').trim().toLowerCase()
   const password = String(req.body.password || '').trim()
+  const emailCode = String(req.body.emailCode || req.body.email_code || '').trim()
   const rawUserType = String(req.body.user_type || 'student')
   const userType = normalizeUserType(rawUserType)
   const requestedGrade = String(req.body.grade || '').trim()
@@ -102,6 +159,8 @@ router.post('/register', (req, res) => {
 
   if (!email) return fieldError(res, 400, 'email', '请输入邮箱地址')
   if (!EMAIL_PATTERN.test(email)) return fieldError(res, 400, 'email', '请输入有效的邮箱地址')
+  if (!emailCodeService.isPkuEmail(email)) return fieldError(res, 400, 'email', '仅支持 pku.edu.cn 或其子域邮箱')
+  if (!emailCode) return fieldError(res, 400, 'emailCode', '请输入邮箱验证码')
   if (!username) return fieldError(res, 400, 'username', '请输入用户名')
   if (!USERNAME_PATTERN.test(username)) return fieldError(res, 400, 'username', '用户名需为6-15位字母或数字组合')
   if (!password) return fieldError(res, 400, 'password', '请输入密码')
@@ -118,6 +177,13 @@ router.post('/register', (req, res) => {
   if (User.findRawByUsername(username)) return fieldError(res, 409, 'username', '用户名已存在')
   if (User.findRawByEmail(email)) return fieldError(res, 409, 'email', '该邮箱已被注册')
 
+  let verification
+  try {
+    verification = emailCodeService.verifyCode({ email, purpose: 'register', code: emailCode })
+  } catch (error) {
+    return serviceFieldError(res, error)
+  }
+
   try {
     const id = User.create({
       username,
@@ -127,6 +193,7 @@ router.post('/register', (req, res) => {
       user_type: userType,
       grade
     })
+    emailCodeService.consumeCode(verification.id)
     const publicUser = User.findById(id)
     res.status(201).json({
       success: true,
@@ -160,6 +227,37 @@ router.post('/login', (req, res) => {
     return res.status(401).json({ success: false, error: '账号或密码错误' })
   }
 
+  const publicUser = User.findById(user.id)
+  res.json({
+    success: true,
+    token: signUserToken(user),
+    expiresIn: USER_JWT_EXPIRES_IN,
+    user: publicUser
+  })
+})
+
+router.post('/login/email-code', (req, res) => {
+  const email = emailCodeService.normalizeEmail(req.body.email)
+  const emailCode = String(req.body.emailCode || req.body.email_code || req.body.code || '').trim()
+
+  if (!email) return fieldError(res, 400, 'email', '请输入邮箱地址')
+  if (!EMAIL_PATTERN.test(email)) return fieldError(res, 400, 'email', '请输入有效的邮箱地址')
+  if (!emailCodeService.isPkuEmail(email)) return fieldError(res, 400, 'email', '仅支持 pku.edu.cn 或其子域邮箱')
+  if (!emailCode) return fieldError(res, 400, 'emailCode', '请输入邮箱验证码')
+
+  const user = User.findRawByEmail(email)
+  if (!user) {
+    return res.status(401).json({ success: false, error: '邮箱或验证码错误' })
+  }
+
+  let verification
+  try {
+    verification = emailCodeService.verifyCode({ email, purpose: 'login', code: emailCode })
+  } catch (error) {
+    return serviceFieldError(res, error)
+  }
+
+  emailCodeService.consumeCode(verification.id)
   const publicUser = User.findById(user.id)
   res.json({
     success: true,
@@ -437,7 +535,8 @@ router.post('/classes', authMiddleware, requireTeacher, (req, res) => {
   try {
     const item = Classroom.create({
       teacherUserId: req.user.id,
-      name: req.body.name
+      name: req.body.name,
+      allowStudentUploads: parseFlag(req.body.allow_student_uploads ?? req.body.allowStudentUploads)
     })
     res.status(201).json({ success: true, item })
   } catch (error) {
@@ -489,15 +588,35 @@ router.get('/classes/:id', authMiddleware, (req, res) => {
 router.put('/classes/:id', authMiddleware, requireTeacher, (req, res) => {
   const item = Classroom.findForUser(req.params.id, { userId: req.user.id })
   if (!item) return res.status(404).json({ error: '班级不存在或无权访问' })
-  if (!item.is_creator) return res.status(403).json({ error: '仅创建者可修改班级名称' })
 
   try {
-    const result = Classroom.updateName({
-      classId: req.params.id,
-      teacherUserId: req.user.id,
-      name: req.body.name
-    })
-    if (!result.changes) return res.status(404).json({ error: '班级不存在或无权访问' })
+    let changed = false
+
+    if (req.body.name !== undefined) {
+      if (!item.is_creator) return res.status(403).json({ error: '仅创建者可修改班级名称' })
+      const result = Classroom.updateName({
+        classId: req.params.id,
+        teacherUserId: req.user.id,
+        name: req.body.name
+      })
+      if (!result.changes) return res.status(404).json({ error: '班级不存在或无权访问' })
+      changed = true
+    }
+
+    if (req.body.allow_student_uploads !== undefined || req.body.allowStudentUploads !== undefined) {
+      const result = Classroom.updateStudentUploadPermission({
+        classId: req.params.id,
+        teacherUserId: req.user.id,
+        allowStudentUploads: parseFlag(req.body.allow_student_uploads ?? req.body.allowStudentUploads)
+      })
+      if (!result.changes) {
+        if (result.reason === 'forbidden') return res.status(403).json({ error: '仅班级内教师可修改学生上传权限' })
+        return res.status(404).json({ error: '班级不存在或无权访问' })
+      }
+      changed = true
+    }
+
+    if (!changed) return res.status(400).json({ error: '没有可更新的内容' })
     res.json({ success: true })
   } catch (error) {
     if (String(error?.message || '').includes('班级名不能为空')) {
@@ -555,26 +674,32 @@ router.get('/classes/:id/materials', authMiddleware, (req, res) => {
     idOrder: req.query.id_order || req.query.idOrder || 'desc'
   })
   const baseUrl = `${req.protocol}://${req.get('host')}`
+  const canManage = Classroom.canManageMaterials(req.params.id, { userId: req.user.id })
   res.json({
-    rows: result.rows.map((row) => publicReadingMaterial({
-      ...row,
-      view_url: row.can_view ? `${baseUrl}/api/user/classes/${req.params.id}/materials/open?token=${ReadingMaterial.issueAccessToken(row.id)}` : null
-    })),
+    rows: result.rows.map((row) => {
+      const canModify = canManage || isReadingMaterialOwner(row, req.user.id)
+      return publicReadingMaterial({
+        ...row,
+        can_edit: canModify,
+        can_delete: canModify,
+        view_url: row.can_view ? `${baseUrl}/api/user/classes/${req.params.id}/materials/open?token=${ReadingMaterial.issueAccessToken(row.id)}` : null
+      })
+    }),
     total: result.total,
-    canManage: Classroom.canManageMaterials(req.params.id, { userId: req.user.id })
+    canManage,
+    canUpload: Classroom.canUploadMaterials(req.params.id, { userId: req.user.id })
   })
 })
 
 router.post(
   '/classes/:id/materials/upload',
   authMiddleware,
-  requireTeacher,
   express.raw({ type: '*/*', limit: '200mb' }),
   (req, res) => {
     const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
     if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
-    if (!Classroom.canManageMaterials(req.params.id, { userId: req.user.id })) {
-      return res.status(403).json({ error: '仅班级内教师可上传课程资料' })
+    if (!Classroom.canUploadMaterials(req.params.id, { userId: req.user.id })) {
+      return res.status(403).json({ error: '当前班级未开放学生上传课程资料' })
     }
 
     try {
@@ -631,16 +756,16 @@ router.get('/classes/:id/materials/:materialId/content', authMiddleware, (req, r
   return streamReadingMaterial(res, item)
 })
 
-router.put('/classes/:id/materials/:materialId', authMiddleware, requireTeacher, (req, res) => {
+router.put('/classes/:id/materials/:materialId', authMiddleware, (req, res) => {
   const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
   if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
-  if (!Classroom.canManageMaterials(req.params.id, { userId: req.user.id })) {
-    return res.status(403).json({ error: '仅班级内教师可编辑课程资料' })
-  }
 
   const item = ReadingMaterial.findById(req.params.materialId)
   if (!item || Number(item.class_id) !== Number(req.params.id)) {
     return res.status(404).json({ error: '课程资料不存在' })
+  }
+  if (!canModifyClassMaterial(req.params.id, item, req.user.id)) {
+    return res.status(403).json({ error: '仅班级内教师或上传者本人可编辑课程资料' })
   }
 
   const title = String(req.body.title || '').trim()
@@ -649,16 +774,16 @@ router.put('/classes/:id/materials/:materialId', authMiddleware, requireTeacher,
   res.json({ success: true })
 })
 
-router.delete('/classes/:id/materials/:materialId', authMiddleware, requireTeacher, (req, res) => {
+router.delete('/classes/:id/materials/:materialId', authMiddleware, (req, res) => {
   const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
   if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
-  if (!Classroom.canManageMaterials(req.params.id, { userId: req.user.id })) {
-    return res.status(403).json({ error: '仅班级内教师可删除课程资料' })
-  }
 
   const item = ReadingMaterial.findById(req.params.materialId)
   if (!item || Number(item.class_id) !== Number(req.params.id)) {
     return res.status(404).json({ error: '课程资料不存在' })
+  }
+  if (!canModifyClassMaterial(req.params.id, item, req.user.id)) {
+    return res.status(403).json({ error: '仅班级内教师或上传者本人可删除课程资料' })
   }
   ReadingMaterial.delete(req.params.materialId)
   res.json({ success: true })

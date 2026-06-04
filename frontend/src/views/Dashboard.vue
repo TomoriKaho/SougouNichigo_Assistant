@@ -374,7 +374,7 @@ const sharedChatEnabled = computed(() => Boolean(state.user?.share_context_chats
 const welcomeText = computed(() => state.user?.username || state.user?.email || '管理员');
 const welcomeSubtext = computed(() => {
   if (!isPrivileged.value) {
-    return isTeacher.value ? '您已登录総日ナビ，可以创建、管理并进入自己的班级。' : '您已登录総日ナビ，可以通过班级码加入并进入自己的班级。';
+    return isTeacher.value ? '您已登录総日ナビ。' : '您已登录総日ナビ。';
   }
   return '在这里，您可以管理综合日语词库、文法、课文、阅读材料、后台用户和反馈。';
 });

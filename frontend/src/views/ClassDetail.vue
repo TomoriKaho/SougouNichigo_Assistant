@@ -12,6 +12,18 @@
           </button>
           <button class="ghost" @click="refreshMaterials" :disabled="loadingMaterials">刷新</button>
         </div>
+        <div v-if="canConfigureStudentUploads" class="class-student-upload-switch">
+          <span>允许学生上传资料</span>
+          <label class="switch" aria-label="是否允许学生上传课程资料">
+            <input
+              type="checkbox"
+              :checked="!!detail?.allow_student_uploads"
+              :disabled="savingAction"
+              @change="toggleStudentUploadPermission"
+            />
+            <span class="slider"></span>
+          </label>
+        </div>
         <button
           v-if="canDissolveClass"
           class="danger"
@@ -48,7 +60,7 @@
             </div>
             <div class="class-detail-panel-meta">
               <button
-                v-if="activeDetailView === 'materials' && canManageMaterials"
+                v-if="activeDetailView === 'materials' && canUploadMaterials"
                 type="button"
                 @click="openUploadDialog"
               >
@@ -179,8 +191,24 @@
                       >查看</a>
                       <button v-else class="ghost" disabled title="该文件暂不可在线查看，请下载后打开">查看</button>
                       <button class="ghost" type="button" @click="downloadMaterial(item)">下载</button>
-                      <button v-if="canManageMaterials" class="ghost" type="button" @click="openEditDialog(item)">编辑</button>
-                      <button v-if="canManageMaterials" class="danger" type="button" @click="confirmDeleteMaterial(item)">删除</button>
+                      <button
+                        class="ghost"
+                        type="button"
+                        :disabled="!item.can_edit"
+                        :title="item.can_edit ? '编辑课程资料标题' : '只能编辑自己上传的资料'"
+                        @click="openEditDialog(item)"
+                      >
+                        编辑
+                      </button>
+                      <button
+                        class="danger"
+                        type="button"
+                        :disabled="!item.can_delete"
+                        :title="item.can_delete ? '删除课程资料' : '只能删除自己上传的资料'"
+                        @click="confirmDeleteMaterial(item)"
+                      >
+                        删除
+                      </button>
                     </td>
                   </tr>
                   <tr v-if="!materialsRows.length">
@@ -374,6 +402,8 @@ const deleteMaterialDialog = ref(null);
 
 const isCreator = computed(() => !!detail.value?.is_creator);
 const canManageMaterials = computed(() => String(detail.value?.member_role || '').trim() === 'teacher');
+const canUploadMaterials = computed(() => canManageMaterials.value || !!detail.value?.allow_student_uploads);
+const canConfigureStudentUploads = computed(() => canManageMaterials.value && activeDetailView.value === 'members');
 const canDissolveClass = computed(() => isTeacher.value && isCreator.value && activeDetailView.value === 'members');
 const materialsTotalPages = computed(() => Math.max(1, Math.ceil(materialsTotal.value / materialsPageSize.value)));
 const membersPage = ref(1);
@@ -614,6 +644,29 @@ async function submitDissolveClass() {
   }
 }
 
+async function toggleStudentUploadPermission(event) {
+  if (!detail.value) return;
+  const nextValue = !!event.target.checked;
+  const previousValue = !!detail.value.allow_student_uploads;
+  savingAction.value = true;
+  try {
+    await apiRequest(`/api/user/classes/${route.params.id}`, {
+      method: 'PUT',
+      body: { allow_student_uploads: nextValue }
+    });
+    detail.value = {
+      ...detail.value,
+      allow_student_uploads: nextValue
+    };
+    showToast(nextValue ? '已允许学生上传课程资料' : '已关闭学生上传课程资料', 'success');
+  } catch (err) {
+    event.target.checked = previousValue;
+    handleApiError(err);
+  } finally {
+    savingAction.value = false;
+  }
+}
+
 function openUploadDialog() {
   uploadDialogOpen.value = true;
   uploadForm.title = '';
@@ -683,6 +736,7 @@ async function submitUploadMaterial() {
 }
 
 function openEditDialog(item) {
+  if (!item?.can_edit) return;
   editMaterialDialog.value = item;
   editMaterialForm.title = item.title || '';
   editMaterialError.value = '';
@@ -717,6 +771,7 @@ async function submitEditMaterial() {
 }
 
 function confirmDeleteMaterial(item) {
+  if (!item?.can_delete) return;
   deleteMaterialDialog.value = item;
 }
 

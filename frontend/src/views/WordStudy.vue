@@ -66,12 +66,18 @@
           <article v-for="item in rows" :key="item.id" class="lexicon-entry-card" :data-entry-id="item.id">
             <div class="lexicon-entry-main" :class="{ 'is-scrollable': scrollableEntryIds.has(item.id) }">
               <div
+                v-if="showWordStudyHeader(item)"
                 class="lexicon-card-header word-study-card-header"
                 :class="{ 'has-meta': hasWordStudyMeta(item) }"
               >
-                <h3 class="lexicon-entry-term" :class="{ 'is-non-key-word': !item.is_key_word }" :title="item.term">
-                  <span>{{ item.term }}</span>
-                  <span v-if="item.accent" class="lexicon-entry-accent">{{ item.accent }}</span>
+                <h3
+                  v-if="showWordStudyTerm()"
+                  class="lexicon-entry-term"
+                  :class="{ 'is-non-key-word': !item.is_key_word }"
+                  :title="wordStudyDisplayedTerm(item)"
+                >
+                  <span>{{ wordStudyDisplayedTerm(item) }}</span>
+                  <span v-if="item.accent && showWordStudyAccent()" class="lexicon-entry-accent">{{ item.accent }}</span>
                 </h3>
                 <div
                   v-if="hasWordStudyMeta(item)"
@@ -92,8 +98,23 @@
                   </div>
                 </div>
               </div>
-              <p v-if="item.supplement" class="lexicon-entry-supplement">({{ item.supplement }})</p>
-              <p class="lexicon-entry-translation">{{ item.explanation || '-' }}</p>
+              <p
+                v-if="showWordStudySupplement(item)"
+                class="lexicon-entry-supplement"
+                :class="{ 'word-study-text-has-meta': hasWordStudyMeta(item) }"
+              >
+                ({{ item.supplement }})
+              </p>
+              <p
+                v-if="showWordStudyTranslation()"
+                class="lexicon-entry-translation"
+                :class="{
+                  'word-study-text-has-meta': hasWordStudyMeta(item),
+                  'word-study-translation-only': displayMode === 'translationOnly'
+                }"
+              >
+                {{ item.explanation || '-' }}
+              </p>
             </div>
             <button
               class="word-study-question-button"
@@ -121,27 +142,45 @@
     </div>
 
     <div class="study-footer-bar word-study-footer-bar">
-      <span class="muted study-footer-total">共 {{ total }} 条</span>
-      <div class="pagination management-inline-pagination study-footer-pagination">
-        <button class="ghost" :disabled="page === 1 || loading" @click="changePage(page - 1)">上一页</button>
-        <label class="management-pagination-jump" for="word-study-page-jump">
-          第
-          <input
-            id="word-study-page-jump"
-            v-model.number="pageJump"
-            class="management-page-number-input"
-            type="number"
-            min="1"
-            :max="totalPages"
-            :disabled="totalPages <= 1 || loading"
-            @keydown.enter.prevent="jumpToPage"
-            @blur="jumpToPage"
-          />
-          / {{ totalPages }} 页
-        </label>
-        <button class="ghost" :disabled="page === totalPages || loading" @click="changePage(page + 1)">下一页</button>
+      <div class="word-study-display-mode-group">
+        <div class="word-study-display-mode-control" role="tablist" aria-label="词条显示模式">
+          <button
+            v-for="option in displayModeOptions"
+            :key="option.value"
+            class="word-study-display-mode-option"
+            :class="{ active: displayMode === option.value }"
+            type="button"
+            role="tab"
+            :aria-selected="displayMode === option.value ? 'true' : 'false'"
+            @click="selectDisplayMode(option.value)"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+        <p class="word-study-display-mode-hint">{{ currentDisplayModeHint }}</p>
       </div>
-      <span class="study-footer-spacer" aria-hidden="true"></span>
+      <div class="word-study-footer-tools">
+        <div class="pagination management-inline-pagination study-footer-pagination">
+          <button class="ghost" :disabled="page === 1 || loading" @click="changePage(page - 1)">上一页</button>
+          <label class="management-pagination-jump" for="word-study-page-jump">
+            第
+            <input
+              id="word-study-page-jump"
+              v-model.number="pageJump"
+              class="management-page-number-input"
+              type="number"
+              min="1"
+              :max="totalPages"
+              :disabled="totalPages <= 1 || loading"
+              @keydown.enter.prevent="jumpToPage"
+              @blur="jumpToPage"
+            />
+            / {{ totalPages }} 页
+          </label>
+          <button class="ghost" :disabled="page === totalPages || loading" @click="changePage(page + 1)">下一页</button>
+        </div>
+        <span class="muted study-footer-total">共 {{ total }} 条</span>
+      </div>
     </div>
 
     <div v-if="toast.visible" class="toast" :class="toast.type">{{ toast.message }}</div>
@@ -149,7 +188,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { apiRequest, ApiError } from '../utils/apiClient';
 import { useAuth } from '../composables/useAuth';
@@ -169,6 +208,15 @@ const error = ref('');
 const options = ref({ textbooks: [], tableTypes: [] });
 const scrollableEntryIds = ref(new Set());
 const toast = reactive({ visible: false, message: '', type: 'info' });
+const displayMode = ref('standard');
+
+const displayModeOptions = [
+  { value: 'hideSupplement', label: '隐藏注音' },
+  { value: 'pronunciationOnly', label: '只看注音' },
+  { value: 'standard', label: '标准模式' },
+  { value: 'hideTranslation', label: '隐藏释义' },
+  { value: 'translationOnly', label: '只看释义' }
+];
 
 const filters = reactive({
   textbookId: 0,
@@ -185,6 +233,13 @@ const lessonOptions = computed(() => selectedTextbook.value?.lessons || []);
 const selectedLesson = computed(() => lessonOptions.value.find((item) => Number(item.id) === Number(filters.lessonScope)) || null);
 const unitOptions = computed(() => (selectedLesson.value ? selectedLesson.value.units || [] : []));
 const lessonFilterAll = computed(() => !selectedLesson.value);
+const currentDisplayModeHint = computed(() => {
+  if (displayMode.value === 'pronunciationOnly') return '适合练习根据假名写汉字';
+  if (displayMode.value === 'hideSupplement') return '适合练习根据汉字写假名';
+  if (displayMode.value === 'hideTranslation') return '根据日语回想中文释义';
+  if (displayMode.value === 'translationOnly') return '根据中文释义回想日语单词';
+  return '默认显示单词全部信息';
+});
 const lessonRange = computed(() => {
   if (filters.lessonScope === 'firstHalf') return { min: 1, max: 5 };
   if (filters.lessonScope === 'secondHalf') return { min: 6, max: 10 };
@@ -197,6 +252,10 @@ function showToast(message, type = 'info') {
   toast.type = type;
   toast.visible = true;
   setTimeout(() => (toast.visible = false), 1600);
+}
+
+function selectDisplayMode(value) {
+  displayMode.value = value;
 }
 
 function handleApiError(err) {
@@ -286,6 +345,34 @@ function partOfSpeechMeta(item) {
   return partOfSpeech ? `<${partOfSpeech}>` : '';
 }
 
+function showWordStudyTerm() {
+  return displayMode.value !== 'translationOnly';
+}
+
+function showWordStudyAccent() {
+  return displayMode.value !== 'pronunciationOnly' && displayMode.value !== 'translationOnly';
+}
+
+function wordStudyDisplayedTerm(item) {
+  if (displayMode.value === 'pronunciationOnly') {
+    return String(item?.supplement || item?.term || '').trim() || '-';
+  }
+  return item?.term || '-';
+}
+
+function showWordStudySupplement(item) {
+  if (!item?.supplement) return false;
+  return displayMode.value === 'standard' || displayMode.value === 'hideTranslation';
+}
+
+function showWordStudyTranslation() {
+  return displayMode.value !== 'hideTranslation';
+}
+
+function showWordStudyHeader(item) {
+  return showWordStudyTerm() || hasWordStudyMeta(item);
+}
+
 function metadataTags(item) {
   const tags = [];
   if (item?.is_proper_noun) tags.push({ key: 'proper-noun', label: '专有名词', className: 'tag-proper-noun' });
@@ -360,7 +447,12 @@ watch(() => filters.keyOnly, () => {
   refresh();
 });
 
+watch(displayMode, () => {
+  measureCardScrollbars();
+});
+
 onMounted(async () => {
+  displayMode.value = 'standard';
   window.addEventListener('resize', measureCardScrollbars);
   try {
     await loadOptions();
@@ -373,5 +465,9 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', measureCardScrollbars);
+});
+
+onActivated(() => {
+  displayMode.value = 'standard';
 });
 </script>

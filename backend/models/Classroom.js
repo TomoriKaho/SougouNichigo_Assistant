@@ -15,6 +15,10 @@ function normalizeCode(value) {
   return String(value || '').trim().toUpperCase()
 }
 
+function normalizeFlag(value) {
+  return value ? 1 : 0
+}
+
 function textDisplayWidth(value) {
   return Array.from(String(value || '')).reduce((total, char) => {
     return total + (/[\u0000-\u00ff]/.test(char) ? 1 : 2)
@@ -56,6 +60,7 @@ function mapClassRow(row) {
     student_count: Number(row.student_count || 0),
     teacher_member_count: Number(row.teacher_member_count || 0),
     material_count: Number(row.material_count || 0),
+    allow_student_uploads: !!row.allow_student_uploads,
     is_creator: !!row.is_creator
   }
 }
@@ -90,7 +95,7 @@ function classRowById(classId) {
 }
 
 class Classroom {
-  static create({ teacherUserId, name }) {
+  static create({ teacherUserId, name, allowStudentUploads = false }) {
     const normalizedName = validateClassName(name)
 
     const teacherId = Number(teacherUserId)
@@ -100,14 +105,16 @@ class Classroom {
         name,
         code,
         teacher_user_id,
+        allow_student_uploads,
         created_at,
         updated_at
       )
-      VALUES (?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
+      VALUES (?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
     `).run(
       normalizedName,
       code,
-      teacherId
+      teacherId,
+      normalizeFlag(allowStudentUploads)
     )
 
     userDb.prepare(`
@@ -182,6 +189,7 @@ class Classroom {
         c.name,
         c.code,
         c.teacher_user_id,
+        c.allow_student_uploads,
         c.created_at,
         c.updated_at,
         m.created_at AS joined_at,
@@ -239,6 +247,14 @@ class Classroom {
     return membership?.member_role === 'teacher'
   }
 
+  static canUploadMaterials(classId, { userId }) {
+    const membership = this.membershipForUser(classId, userId)
+    if (!membership) return false
+    if (membership.member_role === 'teacher') return true
+    const row = classRowById(classId)
+    return !!row?.allow_student_uploads
+  }
+
   static canRenameOrManageStudents(classId, { userId }) {
     const row = classRowById(classId)
     return !!row && Number(row.teacher_user_id) === Number(userId)
@@ -253,6 +269,7 @@ class Classroom {
         c.name,
         c.code,
         c.teacher_user_id,
+        c.allow_student_uploads,
         c.created_at,
         c.updated_at,
         m.created_at AS joined_at,
@@ -320,6 +337,23 @@ class Classroom {
       normalizedName,
       Number(classId),
       Number(teacherUserId)
+    )
+  }
+
+  static updateStudentUploadPermission({ classId, teacherUserId, allowStudentUploads }) {
+    if (!this.canManageMaterials(classId, { userId: teacherUserId })) {
+      return { changes: 0, reason: 'forbidden' }
+    }
+
+    return userDb.prepare(`
+      UPDATE classes
+      SET
+        allow_student_uploads = ?,
+        updated_at = datetime('now', 'localtime')
+      WHERE id = ?
+    `).run(
+      normalizeFlag(allowStudentUploads),
+      Number(classId)
     )
   }
 

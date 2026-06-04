@@ -1342,6 +1342,47 @@ button.ghost:hover {
   font-size: 16px;
 }
 
+.login-method-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fffaf4;
+}
+
+.login-method-tabs button {
+  min-height: 40px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  box-shadow: none;
+  font-size: 15px;
+}
+
+.login-method-tabs button.active {
+  background: var(--theme-red);
+  color: #fffefc;
+}
+
+.email-code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  gap: 10px;
+  align-items: center;
+}
+
+.email-code-row input {
+  width: 100%;
+}
+
+.email-code-row button {
+  width: 120px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
 .login-secondary-actions,
 .login-register-actions {
   display: grid;
@@ -1351,6 +1392,16 @@ button.ghost:hover {
 
 .login-register-actions {
   margin-top: 2px;
+}
+
+@media (max-width: 520px) {
+  .email-code-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .email-code-row button {
+    width: 100%;
+  }
 }
 
 .field-hint {
@@ -1866,6 +1917,27 @@ textarea:disabled {
   width: min(520px, 96vw);
 }
 
+.class-create-option-row,
+.class-student-upload-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.class-create-option-row {
+  width: 100%;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.class-student-upload-switch {
+  min-height: 40px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
 .class-detail-page {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -2260,7 +2332,7 @@ textarea:disabled {
 
 .study-footer-bar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
   align-items: center;
   gap: 12px;
 }
@@ -2268,14 +2340,45 @@ textarea:disabled {
 .study-footer-total {
   justify-self: start;
   white-space: nowrap;
+  align-self: center;
+  line-height: 1;
+  transform: translateY(7px);
 }
 
 .study-footer-pagination {
   justify-self: center;
 }
 
+.study-footer-bar .management-inline-pagination {
+  margin-top: 0;
+}
+
 .study-footer-spacer {
   justify-self: stretch;
+}
+
+.word-study-footer-bar {
+  grid-template-columns: auto auto minmax(0, 1fr);
+  justify-content: start;
+  align-items: start;
+}
+
+.word-study-footer-tools {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  align-self: start;
+  transform: none;
+}
+
+.word-study-footer-bar .study-footer-pagination {
+  justify-self: auto;
+}
+
+.word-study-footer-bar .study-footer-total {
+  justify-self: auto;
+  transform: translateY(6px);
 }
 
 .management-pagination-total {
@@ -2572,6 +2675,70 @@ textarea:disabled {
   min-width: 72px;
 }
 
+.word-study-display-mode-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  align-self: start;
+  position: relative;
+  transform: none;
+}
+
+.word-study-display-mode-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(222, 207, 188, 0.95);
+  border-radius: 12px;
+  background: #fffaf4;
+  box-shadow: 0 10px 22px rgba(101, 0, 13, 0.08);
+  white-space: nowrap;
+}
+
+.word-study-display-mode-option {
+  flex: 0 0 auto;
+  min-width: 76px;
+  min-height: 32px;
+  padding: 5px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.word-study-display-mode-hint {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.05;
+  text-align: center;
+}
+
+.word-study-display-mode-option.active {
+  background: var(--theme-red);
+  color: #fffefc;
+}
+
+.word-study-display-mode-option:hover {
+  box-shadow: none;
+}
+
+.word-study-display-mode-option.active:hover {
+  filter: none;
+}
+
 .word-study-compact-select {
   min-width: 96px !important;
   width: 96px;
@@ -2823,8 +2990,21 @@ textarea:disabled {
   margin: 0;
   color: var(--text);
   font-size: 15px;
+  font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.word-study-text-has-meta {
+  max-width: calc(100% - 82px);
+}
+
+.word-study-translation-only {
+  color: var(--theme-red-dark);
+  font-size: 17px;
+  font-family: 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', serif;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .lexicon-entry-tags {
