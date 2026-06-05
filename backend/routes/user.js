@@ -3,6 +3,7 @@ const fs = require('fs')
 const router = express.Router()
 const { User, ALLOWED_USER_TYPES, STUDENT_GRADES, isGradeAllowedForUserType, normalizeGrade, normalizeUserType } = require('../models/User')
 const { ReadingMaterial } = require('../models/ReadingMaterial')
+const { Assignment } = require('../models/Assignment')
 const { Grammar } = require('../models/Grammar')
 const { Text } = require('../models/Text')
 const { Vocabulary } = require('../models/Vocabulary')
@@ -63,6 +64,42 @@ function streamReadingMaterial(res, item, { view = false } = {}) {
   return fs.createReadStream(filePath).pipe(res)
 }
 
+function decodeHeader(value) {
+  if (value === undefined || value === null) return ''
+  try {
+    return decodeURIComponent(String(value || ''))
+  } catch (error) {
+    return String(value || '')
+  }
+}
+
+function bodyField(req, key, headerName = key) {
+  if (req.body && !Buffer.isBuffer(req.body) && typeof req.body === 'object') {
+    return req.body[key]
+  }
+  return decodeHeader(req.get(headerName))
+}
+
+function uploadedFileFromRequest(req) {
+  const originalFilename = decodeHeader(req.get('x-file-name'))
+  if (!originalFilename) return null
+  return {
+    originalFilename,
+    buffer: Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0)
+  }
+}
+
+function streamAssignmentFile(res, item) {
+  const filePath = Assignment.fileAbsolutePath(item)
+  if (!filePath || !fs.existsSync(filePath)) {
+    return res.status(404).json({ error: '文件不存在' })
+  }
+
+  res.setHeader('Content-Type', Assignment.contentType(item))
+  res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(Assignment.downloadFilename(item))}`)
+  return fs.createReadStream(filePath).pipe(res)
+}
+
 function writeSse(res, event, data) {
   if (res.writableEnded || res.destroyed) return
   res.write(`event: ${event}\n`)
@@ -91,6 +128,15 @@ function isReadingMaterialOwner(item, userId) {
 
 function canModifyClassMaterial(classId, item, userId) {
   return Classroom.canManageMaterials(classId, { userId }) || isReadingMaterialOwner(item, userId)
+}
+
+function findClassAssignment(res, classId, assignmentId) {
+  const assignment = Assignment.findById(assignmentId)
+  if (!assignment || Number(assignment.class_id) !== Number(classId)) {
+    res.status(404).json({ error: '作业不存在' })
+    return null
+  }
+  return assignment
 }
 
 function validatePassword(value) {
@@ -660,6 +706,224 @@ router.delete('/classes/:id', authMiddleware, requireTeacher, (req, res) => {
   })
   if (!result.changes) return res.status(404).json({ error: '班级不存在或无权访问' })
   res.json({ success: true })
+})
+
+router.get('/classes/:id/assignments', authMiddleware, (req, res) => {
+  const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
+  if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
+
+  const result = Assignment.list({
+    classId: req.params.id,
+    userId: req.user.id,
+    limit: parseLimit(req.query.limit, 50, 500),
+    offset: parseOffset(req.query.offset),
+    keyword: req.query.keyword || '',
+    idOrder: req.query.id_order || req.query.idOrder || 'desc'
+  })
+
+  res.json({
+    rows: result.rows,
+    total: result.total,
+    canManage: Classroom.canManageMaterials(req.params.id, { userId: req.user.id })
+  })
+})
+
+router.post(
+  '/classes/:id/assignments',
+  authMiddleware,
+  express.raw({ type: '*/*', limit: '200mb' }),
+  (req, res) => {
+    const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
+    if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
+    if (!Classroom.canManageMaterials(req.params.id, { userId: req.user.id })) {
+      return res.status(403).json({ error: '仅班级内教师可布置作业' })
+    }
+
+    try {
+      const isPublic = req.body && !Buffer.isBuffer(req.body) && typeof req.body === 'object'
+        ? parseFlag(req.body.is_public ?? req.body.isPublic)
+        : parseFlag(req.get('x-assignment-public'))
+      const id = Assignment.create({
+        classId: req.params.id,
+        title: bodyField(req, 'title', 'x-assignment-title'),
+        content: bodyField(req, 'content', 'x-assignment-content'),
+        isPublic,
+        createdBy: req.user.id,
+        file: uploadedFileFromRequest(req)
+      })
+      res.status(201).json({ id })
+    } catch (error) {
+      return res.status(400).json({ error: error.message || '创建作业失败' })
+    }
+  }
+)
+
+router.get('/classes/:id/assignments/:assignmentId', authMiddleware, (req, res) => {
+  const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
+  if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
+
+  const assignment = findClassAssignment(res, req.params.id, req.params.assignmentId)
+  if (!assignment) return
+
+  const canManage = Classroom.canManageMaterials(req.params.id, { userId: req.user.id })
+  res.json({
+    assignment,
+    submissions: Assignment.listSubmissions({
+      assignmentId: assignment.id,
+      viewerUserId: req.user.id,
+      canManage,
+      includePublic: !!assignment.is_public
+    }),
+    canManage
+  })
+})
+
+router.put(
+  '/classes/:id/assignments/:assignmentId',
+  authMiddleware,
+  express.raw({ type: '*/*', limit: '200mb' }),
+  (req, res) => {
+    const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
+    if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
+    if (!Classroom.canManageMaterials(req.params.id, { userId: req.user.id })) {
+      return res.status(403).json({ error: '仅班级内教师可编辑作业' })
+    }
+
+    const assignment = findClassAssignment(res, req.params.id, req.params.assignmentId)
+    if (!assignment) return
+
+    try {
+      const isPublic = req.body && !Buffer.isBuffer(req.body) && typeof req.body === 'object'
+        ? parseFlag(req.body.is_public ?? req.body.isPublic)
+        : parseFlag(req.get('x-assignment-public'))
+      Assignment.update(assignment.id, {
+        title: bodyField(req, 'title', 'x-assignment-title'),
+        content: bodyField(req, 'content', 'x-assignment-content'),
+        isPublic,
+        file: {
+          ...uploadedFileFromRequest(req),
+          createdBy: req.user.id
+        }
+      })
+      res.json({ success: true })
+    } catch (error) {
+      return res.status(400).json({ error: error.message || '编辑作业失败' })
+    }
+  }
+)
+
+router.delete('/classes/:id/assignments/:assignmentId', authMiddleware, (req, res) => {
+  const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
+  if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
+  if (!Classroom.canManageMaterials(req.params.id, { userId: req.user.id })) {
+    return res.status(403).json({ error: '仅班级内教师可删除作业' })
+  }
+
+  const assignment = findClassAssignment(res, req.params.id, req.params.assignmentId)
+  if (!assignment) return
+  Assignment.delete(assignment.id)
+  res.json({ success: true })
+})
+
+router.post(
+  '/classes/:id/assignments/:assignmentId/submissions',
+  authMiddleware,
+  express.raw({ type: '*/*', limit: '200mb' }),
+  (req, res) => {
+    const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
+    if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
+    if (classroom.member_role === 'teacher') return res.status(403).json({ error: '教师无需提交作业' })
+
+    const assignment = findClassAssignment(res, req.params.id, req.params.assignmentId)
+    if (!assignment) return
+
+    try {
+      const id = Assignment.createSubmission({
+        assignmentId: assignment.id,
+        userId: req.user.id,
+        textContent: bodyField(req, 'text_content', 'x-submission-content') ?? bodyField(req, 'textContent', 'x-submission-content'),
+        file: uploadedFileFromRequest(req)
+      })
+      res.status(201).json({ id })
+    } catch (error) {
+      return res.status(400).json({ error: error.message || '提交作业失败' })
+    }
+  }
+)
+
+router.post(
+  '/classes/:id/assignments/:assignmentId/submissions/:submissionId/feedback',
+  authMiddleware,
+  express.raw({ type: '*/*', limit: '200mb' }),
+  (req, res) => {
+    const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
+    if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
+    if (!Classroom.canManageMaterials(req.params.id, { userId: req.user.id })) {
+      return res.status(403).json({ error: '仅班级内教师可反馈作业' })
+    }
+
+    const assignment = findClassAssignment(res, req.params.id, req.params.assignmentId)
+    if (!assignment) return
+    const submission = Assignment.findSubmission(req.params.submissionId)
+    if (!submission || Number(submission.assignment_id) !== Number(assignment.id)) {
+      return res.status(404).json({ error: '提交记录不存在' })
+    }
+
+    try {
+      const id = Assignment.upsertFeedback({
+        assignmentId: assignment.id,
+        submissionId: submission.id,
+        studentUserId: submission.user_id,
+        teacherUserId: req.user.id,
+        textContent: bodyField(req, 'text_content', 'x-feedback-content') ?? bodyField(req, 'textContent', 'x-feedback-content'),
+        file: uploadedFileFromRequest(req)
+      })
+      res.status(201).json({ id })
+    } catch (error) {
+      return res.status(400).json({ error: error.message || '保存反馈失败' })
+    }
+  }
+)
+
+router.get('/classes/:id/assignments/files/:fileId/content', authMiddleware, (req, res) => {
+  const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
+  if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
+
+  const item = Assignment.findAssignmentFile(req.params.fileId)
+  if (!item) return res.status(404).json({ error: '文件不存在' })
+  const assignment = findClassAssignment(res, req.params.id, item.assignment_id)
+  if (!assignment) return
+  return streamAssignmentFile(res, item)
+})
+
+router.get('/classes/:id/assignments/submission-files/:fileId/content', authMiddleware, (req, res) => {
+  const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
+  if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
+
+  const item = Assignment.findSubmissionFile(req.params.fileId)
+  if (!item) return res.status(404).json({ error: '文件不存在' })
+  const assignment = findClassAssignment(res, req.params.id, item.assignment_id)
+  if (!assignment) return
+
+  const canManage = Classroom.canManageMaterials(req.params.id, { userId: req.user.id })
+  const canAccessFile = canManage || assignment.is_public || Number(item.user_id) === Number(req.user.id)
+  if (!canAccessFile) return res.status(403).json({ error: '无权访问该提交文件' })
+  return streamAssignmentFile(res, item)
+})
+
+router.get('/classes/:id/assignments/feedback-files/:fileId/content', authMiddleware, (req, res) => {
+  const classroom = Classroom.findForUser(req.params.id, { userId: req.user.id })
+  if (!classroom) return res.status(404).json({ error: '班级不存在或无权访问' })
+
+  const item = Assignment.findFeedbackFile(req.params.fileId)
+  if (!item) return res.status(404).json({ error: '文件不存在' })
+  const assignment = findClassAssignment(res, req.params.id, item.assignment_id)
+  if (!assignment) return
+
+  const canManage = Classroom.canManageMaterials(req.params.id, { userId: req.user.id })
+  const canAccessFile = canManage || Number(item.student_user_id) === Number(req.user.id)
+  if (!canAccessFile) return res.status(403).json({ error: '无权访问该反馈文件' })
+  return streamAssignmentFile(res, item)
 })
 
 router.get('/classes/:id/materials', authMiddleware, (req, res) => {

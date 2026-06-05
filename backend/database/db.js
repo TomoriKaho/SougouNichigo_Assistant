@@ -520,6 +520,107 @@ function initReadingMaterialsDatabase() {
   readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_reading_materials_hash ON reading_materials(content_hash)')
   readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_reading_materials_category ON reading_materials(file_category)')
   readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_reading_materials_class ON reading_materials(class_id)')
+
+  readingMaterialsDb.exec(`
+    CREATE TABLE IF NOT EXISTS assignments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      class_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT,
+      is_public INTEGER DEFAULT 0,
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    )
+  `)
+
+  readingMaterialsDb.exec(`
+    CREATE TABLE IF NOT EXISTS assignment_files (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      assignment_id INTEGER NOT NULL,
+      file_role TEXT NOT NULL DEFAULT 'assignment',
+      original_filename TEXT NOT NULL,
+      stored_filename TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      mime_type TEXT,
+      file_category TEXT DEFAULT 'file',
+      file_size INTEGER NOT NULL DEFAULT 0,
+      content_hash TEXT NOT NULL,
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE
+    )
+  `)
+
+  readingMaterialsDb.exec(`
+    CREATE TABLE IF NOT EXISTS assignment_submissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      assignment_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      text_content TEXT,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE
+    )
+  `)
+
+  readingMaterialsDb.exec(`
+    CREATE TABLE IF NOT EXISTS assignment_submission_files (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      submission_id INTEGER NOT NULL,
+      original_filename TEXT NOT NULL,
+      stored_filename TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      mime_type TEXT,
+      file_category TEXT DEFAULT 'file',
+      file_size INTEGER NOT NULL DEFAULT 0,
+      content_hash TEXT NOT NULL,
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (submission_id) REFERENCES assignment_submissions(id) ON DELETE CASCADE
+    )
+  `)
+
+  readingMaterialsDb.exec(`
+    CREATE TABLE IF NOT EXISTS assignment_feedback (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      assignment_id INTEGER NOT NULL,
+      student_user_id INTEGER NOT NULL,
+      submission_id INTEGER,
+      teacher_user_id INTEGER NOT NULL,
+      text_content TEXT,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+      UNIQUE(assignment_id, student_user_id),
+      FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE,
+      FOREIGN KEY (submission_id) REFERENCES assignment_submissions(id) ON DELETE SET NULL
+    )
+  `)
+
+  readingMaterialsDb.exec(`
+    CREATE TABLE IF NOT EXISTS assignment_feedback_files (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      feedback_id INTEGER NOT NULL,
+      original_filename TEXT NOT NULL,
+      stored_filename TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      mime_type TEXT,
+      file_category TEXT DEFAULT 'file',
+      file_size INTEGER NOT NULL DEFAULT 0,
+      content_hash TEXT NOT NULL,
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (feedback_id) REFERENCES assignment_feedback(id) ON DELETE CASCADE
+    )
+  `)
+
+  readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_assignments_class ON assignments(class_id)')
+  readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_assignments_created ON assignments(created_at)')
+  readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_assignment_files_assignment ON assignment_files(assignment_id)')
+  readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_assignment_submissions_assignment ON assignment_submissions(assignment_id)')
+  readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_assignment_submissions_user ON assignment_submissions(user_id)')
+  readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_assignment_feedback_assignment ON assignment_feedback(assignment_id)')
+  readingMaterialsDb.exec('CREATE INDEX IF NOT EXISTS idx_assignment_feedback_student ON assignment_feedback(student_user_id)')
 }
 
 function initFeedbackDatabase() {

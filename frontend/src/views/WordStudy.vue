@@ -71,13 +71,19 @@
                 :class="{ 'has-meta': hasWordStudyMeta(item) }"
               >
                 <h3
-                  v-if="showWordStudyTerm()"
                   class="lexicon-entry-term"
-                  :class="{ 'is-non-key-word': !item.is_key_word }"
+                  :class="{
+                    'is-non-key-word': !item.is_key_word
+                  }"
                   :title="wordStudyDisplayedTerm(item)"
                 >
-                  <span>{{ wordStudyDisplayedTerm(item) }}</span>
-                  <span v-if="item.accent && showWordStudyAccent()" class="lexicon-entry-accent">{{ item.accent }}</span>
+                  <span
+                    class="word-study-term-mask-target word-study-maskable"
+                    :class="{ 'is-masked': maskSettings.term }"
+                  >
+                    <span class="word-study-maskable-content">{{ wordStudyDisplayedTerm(item) }}</span>
+                    <span v-if="item.accent" class="lexicon-entry-accent word-study-maskable-content">{{ item.accent }}</span>
+                  </span>
                 </h3>
                 <div
                   v-if="hasWordStudyMeta(item)"
@@ -101,19 +107,29 @@
               <p
                 v-if="showWordStudySupplement(item)"
                 class="lexicon-entry-supplement"
-                :class="{ 'word-study-text-has-meta': hasWordStudyMeta(item) }"
-              >
-                ({{ item.supplement }})
-              </p>
-              <p
-                v-if="showWordStudyTranslation()"
-                class="lexicon-entry-translation"
                 :class="{
-                  'word-study-text-has-meta': hasWordStudyMeta(item),
-                  'word-study-translation-only': displayMode === 'translationOnly'
+                  'word-study-text-has-meta': hasWordStudyMeta(item)
                 }"
               >
-                {{ item.explanation || '-' }}
+                <span
+                  class="word-study-line-mask-target word-study-maskable"
+                  :class="{ 'is-masked': maskSettings.supplement }"
+                >
+                  <span class="word-study-maskable-content">({{ item.supplement }})</span>
+                </span>
+              </p>
+              <p
+                class="lexicon-entry-translation"
+                :class="{
+                  'word-study-text-has-meta': hasWordStudyMeta(item)
+                }"
+              >
+                <span
+                  class="word-study-line-mask-target word-study-maskable"
+                  :class="{ 'is-masked': maskSettings.translation }"
+                >
+                  <span class="word-study-maskable-content">{{ item.explanation || '-' }}</span>
+                </span>
               </p>
             </div>
             <button
@@ -142,22 +158,23 @@
     </div>
 
     <div class="study-footer-bar word-study-footer-bar">
-      <div class="word-study-display-mode-group">
-        <div class="word-study-display-mode-control" role="tablist" aria-label="词条显示模式">
-          <button
-            v-for="option in displayModeOptions"
-            :key="option.value"
-            class="word-study-display-mode-option"
-            :class="{ active: displayMode === option.value }"
-            type="button"
-            role="tab"
-            :aria-selected="displayMode === option.value ? 'true' : 'false'"
-            @click="selectDisplayMode(option.value)"
-          >
-            {{ option.label }}
-          </button>
-        </div>
-        <p class="word-study-display-mode-hint">{{ currentDisplayModeHint }}</p>
+      <div class="word-study-mask-toggle-group" aria-label="词条遮盖设置">
+        <label
+          v-for="option in maskOptions"
+          :key="option.key"
+          class="favorite-filter-control word-study-mask-toggle"
+          :class="{ active: maskSettings[option.key] }"
+        >
+          <span>{{ option.label }}</span>
+          <span class="switch">
+            <input
+              v-model="maskSettings[option.key]"
+              type="checkbox"
+              :aria-label="option.label"
+            />
+            <span class="slider"></span>
+          </span>
+        </label>
       </div>
       <div class="word-study-footer-tools">
         <div class="pagination management-inline-pagination study-footer-pagination">
@@ -208,14 +225,16 @@ const error = ref('');
 const options = ref({ textbooks: [], tableTypes: [] });
 const scrollableEntryIds = ref(new Set());
 const toast = reactive({ visible: false, message: '', type: 'info' });
-const displayMode = ref('standard');
+const maskSettings = reactive({
+  term: false,
+  supplement: false,
+  translation: false
+});
 
-const displayModeOptions = [
-  { value: 'hideSupplement', label: '隐藏注音' },
-  { value: 'pronunciationOnly', label: '只看注音' },
-  { value: 'standard', label: '标准模式' },
-  { value: 'hideTranslation', label: '隐藏释义' },
-  { value: 'translationOnly', label: '只看释义' }
+const maskOptions = [
+  { key: 'term', label: '隐藏词条' },
+  { key: 'supplement', label: '隐藏注音' },
+  { key: 'translation', label: '隐藏释义' }
 ];
 
 const filters = reactive({
@@ -233,13 +252,6 @@ const lessonOptions = computed(() => selectedTextbook.value?.lessons || []);
 const selectedLesson = computed(() => lessonOptions.value.find((item) => Number(item.id) === Number(filters.lessonScope)) || null);
 const unitOptions = computed(() => (selectedLesson.value ? selectedLesson.value.units || [] : []));
 const lessonFilterAll = computed(() => !selectedLesson.value);
-const currentDisplayModeHint = computed(() => {
-  if (displayMode.value === 'pronunciationOnly') return '适合练习根据假名写汉字';
-  if (displayMode.value === 'hideSupplement') return '适合练习根据汉字写假名';
-  if (displayMode.value === 'hideTranslation') return '根据日语回想中文释义';
-  if (displayMode.value === 'translationOnly') return '根据中文释义回想日语单词';
-  return '默认显示单词全部信息';
-});
 const lessonRange = computed(() => {
   if (filters.lessonScope === 'firstHalf') return { min: 1, max: 5 };
   if (filters.lessonScope === 'secondHalf') return { min: 6, max: 10 };
@@ -252,10 +264,6 @@ function showToast(message, type = 'info') {
   toast.type = type;
   toast.visible = true;
   setTimeout(() => (toast.visible = false), 1600);
-}
-
-function selectDisplayMode(value) {
-  displayMode.value = value;
 }
 
 function handleApiError(err) {
@@ -345,32 +353,16 @@ function partOfSpeechMeta(item) {
   return partOfSpeech ? `<${partOfSpeech}>` : '';
 }
 
-function showWordStudyTerm() {
-  return displayMode.value !== 'translationOnly';
-}
-
-function showWordStudyAccent() {
-  return displayMode.value !== 'pronunciationOnly' && displayMode.value !== 'translationOnly';
-}
-
 function wordStudyDisplayedTerm(item) {
-  if (displayMode.value === 'pronunciationOnly') {
-    return String(item?.supplement || item?.term || '').trim() || '-';
-  }
   return item?.term || '-';
 }
 
 function showWordStudySupplement(item) {
-  if (!item?.supplement) return false;
-  return displayMode.value === 'standard' || displayMode.value === 'hideTranslation';
-}
-
-function showWordStudyTranslation() {
-  return displayMode.value !== 'hideTranslation';
+  return Boolean(item?.supplement);
 }
 
 function showWordStudyHeader(item) {
-  return showWordStudyTerm() || hasWordStudyMeta(item);
+  return Boolean(item);
 }
 
 function metadataTags(item) {
@@ -447,12 +439,7 @@ watch(() => filters.keyOnly, () => {
   refresh();
 });
 
-watch(displayMode, () => {
-  measureCardScrollbars();
-});
-
 onMounted(async () => {
-  displayMode.value = 'standard';
   window.addEventListener('resize', measureCardScrollbars);
   try {
     await loadOptions();
@@ -468,6 +455,6 @@ onBeforeUnmount(() => {
 });
 
 onActivated(() => {
-  displayMode.value = 'standard';
+  measureCardScrollbars();
 });
 </script>

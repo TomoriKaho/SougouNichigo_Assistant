@@ -12,6 +12,13 @@
           </button>
           <button class="ghost" @click="refreshMaterials" :disabled="loadingMaterials">刷新</button>
         </div>
+        <div v-if="detail && activeDetailView === 'assignments'" class="class-detail-header-search-tools">
+          <input v-model.trim="assignmentsKeyword" placeholder="搜索作业名/内容" @keydown.enter.prevent="refreshAssignments" />
+          <button class="ghost" @click="toggleAssignmentsOrder" :disabled="loadingAssignments">
+            {{ assignmentsOrder === 'asc' ? '最新优先' : '最早优先' }}
+          </button>
+          <button class="ghost" @click="refreshAssignments" :disabled="loadingAssignments">刷新</button>
+        </div>
         <div v-if="canConfigureStudentUploads" class="class-student-upload-switch">
           <span>允许学生上传资料</span>
           <label class="switch" aria-label="是否允许学生上传课程资料">
@@ -66,7 +73,15 @@
               >
                 上传资料
               </button>
+              <button
+                v-if="activeDetailView === 'assignments' && canManageAssignments"
+                type="button"
+                @click="openAssignmentDialog()"
+              >
+                布置作业
+              </button>
               <span v-if="activeDetailView === 'members'" class="muted class-detail-total-text">共 {{ membersTotal }} 人</span>
+              <span v-else-if="activeDetailView === 'assignments'" class="muted class-detail-total-text">共 {{ assignmentsTotal }} 个作业</span>
               <span v-else class="muted class-detail-total-text">共 {{ materialsTotal }} 个文件</span>
 
               <div
@@ -93,7 +108,7 @@
               </div>
 
               <div
-                v-else
+                v-else-if="activeDetailView === 'materials'"
                 class="pagination management-inline-pagination class-detail-inline-pagination"
               >
                 <button class="ghost" :disabled="materialsPage === 1 || loadingMaterials" @click="changeMaterialsPage(materialsPage - 1)">上一页</button>
@@ -113,6 +128,29 @@
                   / {{ materialsTotalPages }} 页
                 </label>
                 <button class="ghost" :disabled="materialsPage === materialsTotalPages || loadingMaterials" @click="changeMaterialsPage(materialsPage + 1)">下一页</button>
+              </div>
+
+              <div
+                v-else
+                class="pagination management-inline-pagination class-detail-inline-pagination"
+              >
+                <button class="ghost" :disabled="assignmentsPage === 1 || loadingAssignments" @click="changeAssignmentsPage(assignmentsPage - 1)">上一页</button>
+                <label class="management-pagination-jump" for="class-assignments-page-jump">
+                  第
+                  <input
+                    id="class-assignments-page-jump"
+                    v-model.number="assignmentsPageJump"
+                    class="management-page-number-input"
+                    type="number"
+                    min="1"
+                    :max="assignmentsTotalPages"
+                    :disabled="assignmentsTotalPages <= 1 || loadingAssignments"
+                    @keydown.enter.prevent="jumpToAssignmentsPage"
+                    @blur="jumpToAssignmentsPage"
+                  />
+                  / {{ assignmentsTotalPages }} 页
+                </label>
+                <button class="ghost" :disabled="assignmentsPage === assignmentsTotalPages || loadingAssignments" @click="changeAssignmentsPage(assignmentsPage + 1)">下一页</button>
               </div>
             </div>
           </div>
@@ -213,6 +251,66 @@
                   </tr>
                   <tr v-if="!materialsRows.length">
                     <td colspan="6" class="empty">暂无课程资料</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section v-show="activeDetailView === 'assignments'" class="class-detail-panel class-assignments-section">
+            <div v-if="assignmentsError" class="error-block">
+              <p class="error">{{ assignmentsError }}</p>
+              <button class="ghost" @click="refreshAssignments">重试</button>
+            </div>
+            <div v-else-if="loadingAssignments" class="loading">加载中...</div>
+            <div v-else class="management-table-scroll class-detail-table-scroll">
+              <table class="table class-assignments-table">
+                <thead>
+                  <tr>
+                    <th>作业名</th>
+                    <th>发布者</th>
+                    <th>公开</th>
+                    <th>提交</th>
+                    <th>发布时间</th>
+                    <th class="classes-actions-header">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in assignmentsRows" :key="item.id">
+                    <td>
+                      <span class="reading-material-title" :title="item.title">{{ item.title }}</span>
+                    </td>
+                    <td>{{ item.creator_username || '-' }}</td>
+                    <td>
+                      <span class="tag" :class="item.is_public ? 'success' : 'info'">{{ item.is_public ? '公开' : '仅个人' }}</span>
+                    </td>
+                    <td>
+                      <span v-if="canManageAssignments">{{ item.submission_student_count }} 人 / {{ item.submission_record_count }} 次</span>
+                      <span v-else>{{ item.my_submission_count ? `已提交 ${item.my_submission_count} 次` : '未提交' }}</span>
+                    </td>
+                    <td>{{ formatDateTime(item.created_at) }}</td>
+                    <td class="actions classes-actions-cell">
+                      <button class="ghost" type="button" @click="openAssignmentDetail(item)">查看</button>
+                      <button
+                        v-if="canManageAssignments"
+                        class="ghost"
+                        type="button"
+                        @click="openAssignmentDialog(item)"
+                      >
+                        编辑
+                      </button>
+                      <button
+                        v-if="canManageAssignments"
+                        class="danger"
+                        type="button"
+                        @click="confirmDeleteAssignment(item)"
+                      >
+                        删除
+                      </button>
+                    </td>
+                  </tr>
+                  <tr v-if="!assignmentsRows.length">
+                    <td colspan="6" class="empty">暂无课程作业</td>
                   </tr>
                 </tbody>
               </table>
@@ -347,6 +445,216 @@
       </div>
     </div>
 
+    <div v-if="assignmentDialogOpen" class="overlay">
+      <div class="modal reading-material-upload-modal assignment-edit-modal">
+        <div class="modal-header">
+          <h3>{{ assignmentDialogItem ? '编辑课程作业' : '布置课程作业' }}</h3>
+          <button class="ghost" type="button" @click="closeAssignmentDialog">关闭</button>
+        </div>
+        <form @submit.prevent="submitAssignment">
+          <label>
+            作业名
+            <input v-model.trim="assignmentForm.title" maxlength="120" />
+          </label>
+          <label>
+            作业内容
+            <textarea v-model.trim="assignmentForm.content" rows="5" placeholder="可选"></textarea>
+          </label>
+          <div class="class-student-upload-switch assignment-public-switch">
+            <span class="assignment-public-label">
+              作业公开
+              <span class="assignment-help-tooltip" tabindex="0" aria-label="公开时，将允许学生查看其他同学的提交内容">
+                <span class="assignment-help-icon">?</span>
+                <span class="assignment-help-tooltip-bubble" role="tooltip">公开时，将允许学生查看其他同学的提交内容</span>
+              </span>
+            </span>
+            <label class="switch" aria-label="是否公开作业提交">
+              <input v-model="assignmentForm.is_public" type="checkbox" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <label>
+            附件
+            <input
+              ref="assignmentFileInput"
+              type="file"
+              accept=".html,.htm,text/html,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
+              @change="handleAssignmentFileChange"
+            />
+          </label>
+          <p class="muted selected-file-line">
+            支持 HTML、图片、PDF 和 Word。{{ assignmentDialogItem ? '上传新附件会替换原附件。' : '附件可选。' }}
+          </p>
+          <p v-if="assignmentFile" class="muted selected-file-line">
+            {{ assignmentFile.name }} / {{ formatFileSize(assignmentFile.size) }}
+          </p>
+          <p v-else-if="assignmentDialogItem?.files?.length" class="muted selected-file-line">
+            当前附件：{{ assignmentDialogItem.files.map((file) => file.original_filename).join('、') }}
+          </p>
+          <p v-if="assignmentError" class="error">{{ assignmentError }}</p>
+          <div class="modal-actions">
+            <button class="ghost" type="button" @click="closeAssignmentDialog">取消</button>
+            <button type="submit" :disabled="savingAction">{{ savingAction ? '保存中...' : '保存' }}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div v-if="assignmentDetailOpen" class="overlay">
+      <div class="modal assignment-detail-modal">
+        <div class="modal-header">
+          <h3>{{ assignmentDetail?.title || '课程作业' }}</h3>
+          <button class="ghost" type="button" @click="closeAssignmentDetail">关闭</button>
+        </div>
+        <div v-if="loadingAssignmentDetail" class="loading">加载中...</div>
+        <template v-else-if="assignmentDetail">
+          <div class="assignment-detail-meta">
+            <span class="tag" :class="assignmentDetail.is_public ? 'success' : 'info'">{{ assignmentDetail.is_public ? '公开提交' : '仅个人可见' }}</span>
+            <span class="muted">发布者：{{ assignmentDetail.creator_username || '-' }}</span>
+            <span class="muted">发布时间：{{ formatDateTime(assignmentDetail.created_at) }}</span>
+          </div>
+          <p v-if="assignmentDetail.content" class="assignment-content-text">{{ assignmentDetail.content }}</p>
+          <p v-else class="muted assignment-content-text">未填写作业内容。</p>
+          <div v-if="assignmentDetail.files?.length" class="assignment-file-list">
+            <button
+              v-for="file in assignmentDetail.files"
+              :key="file.id"
+              class="ghost"
+              type="button"
+              @click="downloadAssignmentFile(file)"
+            >
+              下载附件：{{ file.original_filename }}
+            </button>
+          </div>
+
+          <form v-if="!canManageAssignments" class="assignment-submit-form" @submit.prevent="submitAssignmentSubmission">
+            <h4>我的提交</h4>
+            <label>
+              提交内容
+              <textarea v-model.trim="submissionForm.text_content" rows="4" placeholder="可选"></textarea>
+            </label>
+            <label>
+              提交文件
+              <input
+                ref="submissionFileInput"
+                type="file"
+                accept=".html,.htm,text/html,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
+                @change="handleSubmissionFileChange"
+              />
+            </label>
+            <p v-if="submissionFile" class="muted selected-file-line">
+              {{ submissionFile.name }} / {{ formatFileSize(submissionFile.size) }}
+            </p>
+            <p v-if="submissionError" class="error">{{ submissionError }}</p>
+            <div class="modal-actions assignment-inline-actions">
+              <button type="submit" :disabled="savingAction">{{ savingAction ? '提交中...' : '提交 / 更新' }}</button>
+            </div>
+          </form>
+
+          <div class="assignment-submissions-list">
+            <h4>{{ canManageAssignments ? '提交记录' : (assignmentDetail.is_public ? '提交记录' : '我的提交记录') }}</h4>
+            <div v-if="!assignmentSubmissions.length" class="empty assignment-empty">暂无提交记录</div>
+            <div v-for="submission in assignmentSubmissions" :key="submission.id" class="assignment-submission-item">
+              <div class="assignment-submission-header">
+                <strong>{{ submission.student_username || '-' }}</strong>
+                <span class="muted">{{ formatDateTime(submission.created_at) }}</span>
+              </div>
+              <p v-if="submission.text_content" class="assignment-content-text">{{ submission.text_content }}</p>
+              <p v-else class="muted assignment-content-text">未填写文本内容。</p>
+              <div v-if="submission.files?.length" class="assignment-file-list">
+                <button
+                  v-for="file in submission.files"
+                  :key="file.id"
+                  class="ghost"
+                  type="button"
+                  @click="downloadSubmissionFile(file)"
+                >
+                  下载提交文件：{{ file.original_filename }}
+                </button>
+              </div>
+              <div v-if="submission.feedback" class="assignment-feedback-block">
+                <div class="assignment-submission-header">
+                  <strong>教师反馈</strong>
+                  <span class="muted">{{ formatDateTime(submission.feedback.updated_at || submission.feedback.created_at) }}</span>
+                </div>
+                <p v-if="submission.feedback.text_content" class="assignment-content-text">{{ submission.feedback.text_content }}</p>
+                <div v-if="submission.feedback.files?.length" class="assignment-file-list">
+                  <button
+                    v-for="file in submission.feedback.files"
+                    :key="file.id"
+                    class="ghost"
+                    type="button"
+                    @click="downloadFeedbackFile(file)"
+                  >
+                    下载反馈文件：{{ file.original_filename }}
+                  </button>
+                </div>
+              </div>
+              <div v-if="canManageAssignments" class="modal-actions assignment-inline-actions">
+                <button class="ghost" type="button" @click="openFeedbackDialog(submission)">
+                  {{ submission.feedback ? '编辑反馈' : '反馈' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
+        <p v-if="assignmentDetailError" class="error">{{ assignmentDetailError }}</p>
+      </div>
+    </div>
+
+    <div v-if="feedbackDialogSubmission" class="overlay">
+      <div class="modal classroom-modal assignment-feedback-modal">
+        <div class="modal-header">
+          <h3>作业反馈</h3>
+          <button class="ghost" type="button" @click="closeFeedbackDialog">关闭</button>
+        </div>
+        <form @submit.prevent="submitFeedback">
+          <p class="muted">学生：{{ feedbackDialogSubmission.student_username || '-' }}</p>
+          <label>
+            反馈内容
+            <textarea v-model.trim="feedbackForm.text_content" rows="5" placeholder="可选"></textarea>
+          </label>
+          <label>
+            反馈文件
+            <input
+              ref="feedbackFileInput"
+              type="file"
+              accept=".html,.htm,text/html,.pdf,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
+              @change="handleFeedbackFileChange"
+            />
+          </label>
+          <p v-if="feedbackFile" class="muted selected-file-line">
+            {{ feedbackFile.name }} / {{ formatFileSize(feedbackFile.size) }}
+          </p>
+          <p v-else-if="feedbackDialogSubmission.feedback?.files?.length" class="muted selected-file-line">
+            当前反馈附件：{{ feedbackDialogSubmission.feedback.files.map((file) => file.original_filename).join('、') }}
+          </p>
+          <p v-if="feedbackError" class="error">{{ feedbackError }}</p>
+          <div class="modal-actions">
+            <button class="ghost" type="button" @click="closeFeedbackDialog">取消</button>
+            <button type="submit" :disabled="savingAction">{{ savingAction ? '保存中...' : '保存反馈' }}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div v-if="deleteAssignmentDialog" class="overlay">
+      <div class="modal warning classroom-modal">
+        <div class="modal-header">
+          <h3>确认删除课程作业</h3>
+          <button class="ghost" type="button" @click="closeDeleteAssignmentDialog">关闭</button>
+        </div>
+        <p>即将删除课程作业：<strong>{{ deleteAssignmentDialog.title }}</strong></p>
+        <p class="muted">作业、附件、学生提交记录和教师反馈都会被删除。</p>
+        <div class="modal-actions">
+          <button class="ghost" type="button" @click="closeDeleteAssignmentDialog">取消</button>
+          <button class="danger" type="button" :disabled="savingAction" @click="submitDeleteAssignment">
+            {{ savingAction ? '删除中...' : '确认删除' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="toast.visible" class="toast" :class="toast.type">{{ toast.message }}</div>
   </section>
 </template>
@@ -377,6 +685,7 @@ const dissolveDialogOpen = ref(false);
 const activeDetailView = ref('materials');
 const detailViewOptions = [
   { key: 'materials', label: '课程资料' },
+  { key: 'assignments', label: '课程作业' },
   { key: 'members', label: '班级成员' }
 ];
 
@@ -400,12 +709,49 @@ const editMaterialForm = reactive({ title: '' });
 
 const deleteMaterialDialog = ref(null);
 
+const loadingAssignments = ref(false);
+const assignmentsError = ref('');
+const assignmentsRows = ref([]);
+const assignmentsTotal = ref(0);
+const assignmentsPage = ref(1);
+const assignmentsPageSize = ref(20);
+const assignmentsPageJump = ref(1);
+const assignmentsKeyword = ref('');
+const assignmentsOrder = ref('desc');
+
+const assignmentDialogOpen = ref(false);
+const assignmentDialogItem = ref(null);
+const assignmentForm = reactive({ title: '', content: '', is_public: false });
+const assignmentFile = ref(null);
+const assignmentError = ref('');
+const assignmentFileInput = ref(null);
+const deleteAssignmentDialog = ref(null);
+
+const assignmentDetailOpen = ref(false);
+const loadingAssignmentDetail = ref(false);
+const assignmentDetailError = ref('');
+const assignmentDetail = ref(null);
+const assignmentSubmissions = ref([]);
+
+const submissionForm = reactive({ text_content: '' });
+const submissionFile = ref(null);
+const submissionError = ref('');
+const submissionFileInput = ref(null);
+
+const feedbackDialogSubmission = ref(null);
+const feedbackForm = reactive({ text_content: '' });
+const feedbackFile = ref(null);
+const feedbackError = ref('');
+const feedbackFileInput = ref(null);
+
 const isCreator = computed(() => !!detail.value?.is_creator);
 const canManageMaterials = computed(() => String(detail.value?.member_role || '').trim() === 'teacher');
+const canManageAssignments = computed(() => String(detail.value?.member_role || '').trim() === 'teacher');
 const canUploadMaterials = computed(() => canManageMaterials.value || !!detail.value?.allow_student_uploads);
 const canConfigureStudentUploads = computed(() => canManageMaterials.value && activeDetailView.value === 'members');
 const canDissolveClass = computed(() => isTeacher.value && isCreator.value && activeDetailView.value === 'members');
 const materialsTotalPages = computed(() => Math.max(1, Math.ceil(materialsTotal.value / materialsPageSize.value)));
+const assignmentsTotalPages = computed(() => Math.max(1, Math.ceil(assignmentsTotal.value / assignmentsPageSize.value)));
 const membersPage = ref(1);
 const membersPageSize = ref(12);
 const membersPageJump = ref(1);
@@ -516,7 +862,30 @@ async function refreshMaterials() {
 
 async function reloadAll() {
   await loadDetail();
-  await refreshMaterials();
+  await Promise.all([refreshMaterials(), refreshAssignments()]);
+}
+
+async function refreshAssignments() {
+  loadingAssignments.value = true;
+  assignmentsError.value = '';
+  try {
+    const data = await apiRequest(`/api/user/classes/${route.params.id}/assignments`, {
+      params: {
+        limit: assignmentsPageSize.value,
+        offset: (assignmentsPage.value - 1) * assignmentsPageSize.value,
+        keyword: assignmentsKeyword.value,
+        id_order: assignmentsOrder.value
+      }
+    });
+    assignmentsRows.value = data.rows || [];
+    assignmentsTotal.value = data.total || 0;
+    assignmentsPageJump.value = assignmentsPage.value;
+  } catch (err) {
+    assignmentsError.value = err instanceof ApiError ? err.message : '加载失败';
+    handleApiError(err);
+  } finally {
+    loadingAssignments.value = false;
+  }
 }
 
 function changeMembersPage(nextPage) {
@@ -554,6 +923,21 @@ function toggleMaterialsOrder() {
   materialsOrder.value = materialsOrder.value === 'asc' ? 'desc' : 'asc';
   materialsPage.value = 1;
   refreshMaterials();
+}
+
+function changeAssignmentsPage(nextPage) {
+  assignmentsPage.value = Math.min(Math.max(1, nextPage), assignmentsTotalPages.value);
+  refreshAssignments();
+}
+
+function jumpToAssignmentsPage() {
+  changeAssignmentsPage(Number(assignmentsPageJump.value || 1));
+}
+
+function toggleAssignmentsOrder() {
+  assignmentsOrder.value = assignmentsOrder.value === 'asc' ? 'desc' : 'asc';
+  assignmentsPage.value = 1;
+  refreshAssignments();
 }
 
 function openRenameDialog() {
@@ -685,22 +1069,23 @@ function handleFileChange(event) {
   const file = event.target.files?.[0] || null;
   uploadFile.value = file;
   if (!file) return;
+  uploadError.value = validateClassFile(file);
+}
+
+function validateClassFile(file) {
   const name = file.name.toLowerCase();
   const isPdf = name.endsWith('.pdf');
   const isHtml = name.endsWith('.html') || name.endsWith('.htm');
   const isDoc = name.endsWith('.doc') || name.endsWith('.docx');
   const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|svg|avif|ico|tiff?|heic|heif)$/i.test(file.name);
   if (!isPdf && !isHtml && !isImage && !isDoc) {
-    uploadError.value = '仅支持 HTML、图片、PDF 或 Word 文件';
-  } else if (isDoc && file.size > 200 * 1024 * 1024) {
-    uploadError.value = 'Word 文件不能超过 200MB';
-  } else if (isPdf && file.size > 200 * 1024 * 1024) {
-    uploadError.value = 'PDF 文件不能超过 200MB';
-  } else if (isImage && file.size > 20 * 1024 * 1024) {
-    uploadError.value = '图片文件不能超过 20MB';
-  } else if (isHtml && file.size > 10 * 1024 * 1024) {
-    uploadError.value = 'HTML 文件不能超过 10MB';
+    return '仅支持 HTML、图片、PDF 或 Word 文件';
   }
+  if (isDoc && file.size > 200 * 1024 * 1024) return 'Word 文件不能超过 200MB';
+  if (isPdf && file.size > 200 * 1024 * 1024) return 'PDF 文件不能超过 200MB';
+  if (isImage && file.size > 20 * 1024 * 1024) return '图片文件不能超过 20MB';
+  if (isHtml && file.size > 10 * 1024 * 1024) return 'HTML 文件不能超过 10MB';
+  return '';
 }
 
 async function submitUploadMaterial() {
@@ -817,9 +1202,296 @@ async function downloadMaterial(item) {
   }
 }
 
+function handleAssignmentFileChange(event) {
+  assignmentError.value = '';
+  assignmentFile.value = event.target.files?.[0] || null;
+  if (assignmentFile.value) assignmentError.value = validateClassFile(assignmentFile.value);
+}
+
+function handleSubmissionFileChange(event) {
+  submissionError.value = '';
+  submissionFile.value = event.target.files?.[0] || null;
+  if (submissionFile.value) submissionError.value = validateClassFile(submissionFile.value);
+}
+
+function handleFeedbackFileChange(event) {
+  feedbackError.value = '';
+  feedbackFile.value = event.target.files?.[0] || null;
+  if (feedbackFile.value) feedbackError.value = validateClassFile(feedbackFile.value);
+}
+
+function openAssignmentDialog(item = null) {
+  assignmentDialogItem.value = item;
+  assignmentForm.title = item?.title || '';
+  assignmentForm.content = item?.content || '';
+  assignmentForm.is_public = !!item?.is_public;
+  assignmentFile.value = null;
+  assignmentError.value = '';
+  assignmentDialogOpen.value = true;
+  if (assignmentFileInput.value) assignmentFileInput.value.value = '';
+}
+
+function closeAssignmentDialog() {
+  assignmentDialogOpen.value = false;
+  assignmentDialogItem.value = null;
+  assignmentError.value = '';
+}
+
+async function submitAssignment() {
+  assignmentError.value = '';
+  if (!assignmentForm.title.trim()) {
+    assignmentError.value = '请输入作业名';
+    return;
+  }
+  if (assignmentFile.value) {
+    assignmentError.value = validateClassFile(assignmentFile.value);
+    if (assignmentError.value) return;
+  }
+
+  const path = assignmentDialogItem.value
+    ? `/api/user/classes/${route.params.id}/assignments/${assignmentDialogItem.value.id}`
+    : `/api/user/classes/${route.params.id}/assignments`;
+  const method = assignmentDialogItem.value ? 'PUT' : 'POST';
+
+  savingAction.value = true;
+  try {
+    if (assignmentFile.value) {
+      await fetchRaw(path, {
+        method,
+        headers: {
+          'Content-Type': assignmentFile.value.type || 'application/octet-stream',
+          'X-File-Name': encodeURIComponent(assignmentFile.value.name),
+          'X-Assignment-Title': encodeURIComponent(assignmentForm.title.trim()),
+          'X-Assignment-Content': encodeURIComponent(assignmentForm.content.trim()),
+          'X-Assignment-Public': assignmentForm.is_public ? 'true' : 'false'
+        },
+        body: assignmentFile.value
+      });
+    } else {
+      await apiRequest(path, {
+        method,
+        body: {
+          title: assignmentForm.title.trim(),
+          content: assignmentForm.content.trim(),
+          is_public: assignmentForm.is_public
+        },
+        timeout: 20000
+      });
+    }
+    closeAssignmentDialog();
+    await refreshAssignments();
+    if (assignmentDetailOpen.value && assignmentDetail.value?.id === assignmentDialogItem.value?.id) {
+      await loadAssignmentDetail(assignmentDetail.value.id);
+    }
+    showToast(assignmentDialogItem.value ? '作业已更新' : '作业已发布', 'success');
+  } catch (err) {
+    assignmentError.value = err instanceof ApiError ? err.message : '保存失败';
+    handleApiError(err);
+  } finally {
+    savingAction.value = false;
+  }
+}
+
+async function loadAssignmentDetail(id) {
+  loadingAssignmentDetail.value = true;
+  assignmentDetailError.value = '';
+  try {
+    const data = await apiRequest(`/api/user/classes/${route.params.id}/assignments/${id}`);
+    assignmentDetail.value = data.assignment || null;
+    assignmentSubmissions.value = data.submissions || [];
+  } catch (err) {
+    assignmentDetailError.value = err instanceof ApiError ? err.message : '加载失败';
+    handleApiError(err);
+  } finally {
+    loadingAssignmentDetail.value = false;
+  }
+}
+
+async function openAssignmentDetail(item) {
+  assignmentDetailOpen.value = true;
+  assignmentDetail.value = item;
+  assignmentSubmissions.value = [];
+  submissionForm.text_content = '';
+  submissionFile.value = null;
+  submissionError.value = '';
+  if (submissionFileInput.value) submissionFileInput.value.value = '';
+  await loadAssignmentDetail(item.id);
+}
+
+function closeAssignmentDetail() {
+  assignmentDetailOpen.value = false;
+  assignmentDetail.value = null;
+  assignmentSubmissions.value = [];
+  assignmentDetailError.value = '';
+}
+
+async function submitAssignmentSubmission() {
+  submissionError.value = '';
+  if (submissionFile.value) {
+    submissionError.value = validateClassFile(submissionFile.value);
+    if (submissionError.value) return;
+  }
+  if (!submissionForm.text_content.trim() && !submissionFile.value) {
+    submissionError.value = '请填写提交内容或上传文件';
+    return;
+  }
+
+  savingAction.value = true;
+  try {
+    const path = `/api/user/classes/${route.params.id}/assignments/${assignmentDetail.value.id}/submissions`;
+    if (submissionFile.value) {
+      await fetchRaw(path, {
+        method: 'POST',
+        headers: {
+          'Content-Type': submissionFile.value.type || 'application/octet-stream',
+          'X-File-Name': encodeURIComponent(submissionFile.value.name),
+          'X-Submission-Content': encodeURIComponent(submissionForm.text_content.trim())
+        },
+        body: submissionFile.value
+      });
+    } else {
+      await apiRequest(path, {
+        method: 'POST',
+        body: { text_content: submissionForm.text_content.trim() },
+        timeout: 20000
+      });
+    }
+    submissionForm.text_content = '';
+    submissionFile.value = null;
+    if (submissionFileInput.value) submissionFileInput.value.value = '';
+    await Promise.all([loadAssignmentDetail(assignmentDetail.value.id), refreshAssignments()]);
+    showToast('作业已提交', 'success');
+  } catch (err) {
+    submissionError.value = err instanceof ApiError ? err.message : '提交失败';
+    handleApiError(err);
+  } finally {
+    savingAction.value = false;
+  }
+}
+
+function openFeedbackDialog(submission) {
+  feedbackDialogSubmission.value = submission;
+  feedbackForm.text_content = submission.feedback?.text_content || '';
+  feedbackFile.value = null;
+  feedbackError.value = '';
+  if (feedbackFileInput.value) feedbackFileInput.value.value = '';
+}
+
+function closeFeedbackDialog() {
+  feedbackDialogSubmission.value = null;
+  feedbackError.value = '';
+}
+
+async function submitFeedback() {
+  feedbackError.value = '';
+  if (feedbackFile.value) {
+    feedbackError.value = validateClassFile(feedbackFile.value);
+    if (feedbackError.value) return;
+  }
+  const hasExistingFile = !!feedbackDialogSubmission.value?.feedback?.files?.length;
+  if (!feedbackForm.text_content.trim() && !feedbackFile.value && !hasExistingFile) {
+    feedbackError.value = '请填写反馈内容或上传文件';
+    return;
+  }
+
+  savingAction.value = true;
+  try {
+    const path = `/api/user/classes/${route.params.id}/assignments/${assignmentDetail.value.id}/submissions/${feedbackDialogSubmission.value.id}/feedback`;
+    if (feedbackFile.value) {
+      await fetchRaw(path, {
+        method: 'POST',
+        headers: {
+          'Content-Type': feedbackFile.value.type || 'application/octet-stream',
+          'X-File-Name': encodeURIComponent(feedbackFile.value.name),
+          'X-Feedback-Content': encodeURIComponent(feedbackForm.text_content.trim())
+        },
+        body: feedbackFile.value
+      });
+    } else {
+      await apiRequest(path, {
+        method: 'POST',
+        body: { text_content: feedbackForm.text_content.trim() },
+        timeout: 20000
+      });
+    }
+    closeFeedbackDialog();
+    await loadAssignmentDetail(assignmentDetail.value.id);
+    showToast('反馈已保存', 'success');
+  } catch (err) {
+    feedbackError.value = err instanceof ApiError ? err.message : '保存反馈失败';
+    handleApiError(err);
+  } finally {
+    savingAction.value = false;
+  }
+}
+
+function confirmDeleteAssignment(item) {
+  deleteAssignmentDialog.value = item;
+}
+
+function closeDeleteAssignmentDialog() {
+  deleteAssignmentDialog.value = null;
+}
+
+async function submitDeleteAssignment() {
+  if (!deleteAssignmentDialog.value) return;
+  savingAction.value = true;
+  try {
+    await apiRequest(`/api/user/classes/${route.params.id}/assignments/${deleteAssignmentDialog.value.id}`, {
+      method: 'DELETE'
+    });
+    if (assignmentDetail.value?.id === deleteAssignmentDialog.value.id) closeAssignmentDetail();
+    closeDeleteAssignmentDialog();
+    await refreshAssignments();
+    showToast('课程作业已删除', 'success');
+  } catch (err) {
+    handleApiError(err);
+  } finally {
+    savingAction.value = false;
+  }
+}
+
+async function assignmentFileBlob(path) {
+  const response = await fetchRaw(path);
+  return response.blob();
+}
+
+async function downloadNamedFile(path, filename) {
+  try {
+    const blob = await assignmentFileBlob(path);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename || 'assignment-file';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    handleApiError(err);
+  }
+}
+
+function downloadAssignmentFile(file) {
+  downloadNamedFile(`/api/user/classes/${route.params.id}/assignments/files/${file.id}/content`, file.original_filename);
+}
+
+function downloadSubmissionFile(file) {
+  downloadNamedFile(`/api/user/classes/${route.params.id}/assignments/submission-files/${file.id}/content`, file.original_filename);
+}
+
+function downloadFeedbackFile(file) {
+  downloadNamedFile(`/api/user/classes/${route.params.id}/assignments/feedback-files/${file.id}/content`, file.original_filename);
+}
+
 watch(() => materialsKeyword.value, () => {
   materialsPage.value = 1;
   refreshMaterials();
+});
+
+watch(() => assignmentsKeyword.value, () => {
+  assignmentsPage.value = 1;
+  refreshAssignments();
 });
 
 watch(detail, () => {
