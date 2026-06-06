@@ -1,7 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
-const { dataDir, readingMaterialsDb } = require('../database/db')
+const { dataDir, readingMaterialsDb, userDb } = require('../database/db')
 const { User } = require('./User')
 
 const STORAGE_DIR_NAME = 'assignment_files'
@@ -207,9 +207,18 @@ function publicAssignment(row) {
     ...withUser,
     is_public: !!withUser.is_public,
     submission_student_count: Number(withUser.submission_student_count || 0),
-    submission_record_count: Number(withUser.submission_record_count || 0),
-    my_submission_count: Number(withUser.my_submission_count || 0),
     files: filesForAssignment(withUser.id)
+  }
+}
+
+function publicSubmission(row, { viewerUserId, canManage = false } = {}) {
+  if (!row) return null
+  const withStudent = attachUser(row, 'user_id', 'student_username')
+  const canSeeFeedback = canManage || Number(row.user_id) === Number(viewerUserId)
+  return {
+    ...withStudent,
+    files: filesForSubmission(row.id),
+    feedback: canSeeFeedback ? Assignment.feedbackForStudent(row.assignment_id, row.user_id) : null
   }
 }
 
@@ -233,16 +242,6 @@ class Assignment {
           WHERE s.assignment_id = a.id
         ) AS submission_student_count,
         (
-          SELECT COUNT(*)
-          FROM assignment_submissions s
-          WHERE s.assignment_id = a.id
-        ) AS submission_record_count,
-        (
-          SELECT COUNT(*)
-          FROM assignment_submissions s
-          WHERE s.assignment_id = a.id AND s.user_id = ?
-        ) AS my_submission_count,
-        (
           SELECT MAX(datetime(s.created_at))
           FROM assignment_submissions s
           WHERE s.assignment_id = a.id AND s.user_id = ?
@@ -251,7 +250,7 @@ class Assignment {
       ${where}
       ORDER BY a.id ${order}
       LIMIT ? OFFSET ?
-    `).all(Number(userId), Number(userId), ...params, Number(limit || 50), Number(offset || 0)).map(publicAssignment)
+    `).all(Number(userId), ...params, Number(limit || 50), Number(offset || 0)).map(publicAssignment)
 
     const total = readingMaterialsDb.prepare(`
       SELECT COUNT(*) AS total
@@ -270,12 +269,7 @@ class Assignment {
           SELECT COUNT(DISTINCT s.user_id)
           FROM assignment_submissions s
           WHERE s.assignment_id = a.id
-        ) AS submission_student_count,
-        (
-          SELECT COUNT(*)
-          FROM assignment_submissions s
-          WHERE s.assignment_id = a.id
-        ) AS submission_record_count
+        ) AS submission_student_count
       FROM assignments a
       WHERE a.id = ?
     `).get(Number(id))
@@ -464,13 +458,58 @@ class Assignment {
       ORDER BY datetime(created_at) DESC, id DESC
     `).all(...params)
 
-    return rows.map((row) => {
-      const withStudent = attachUser(row, 'user_id', 'student_username')
-      const canSeeFeedback = canManage || Number(row.user_id) === Number(viewerUserId)
+    return rows.map((row) => publicSubmission(row, { viewerUserId, canManage }))
+  }
+
+  static listStudentSubmissionSummaries({ classId, assignmentId, viewerUserId }) {
+    const students = userDb.prepare(`
+      SELECT
+        cm.user_id,
+        cm.created_at AS joined_at,
+        u.username,
+        u.email
+      FROM class_memberships cm
+      JOIN users u ON u.id = cm.user_id
+      WHERE cm.class_id = ? AND u.user_type = 'student'
+      ORDER BY datetime(cm.created_at) ASC, cm.id ASC
+    `).all(Number(classId))
+
+    const submissions = readingMaterialsDb.prepare(`
+      SELECT *
+      FROM assignment_submissions
+      WHERE assignment_id = ?
+      ORDER BY datetime(created_at) ASC, id ASC
+    `).all(Number(assignmentId))
+
+    const submissionsByUser = new Map()
+    submissions.forEach((row) => {
+      const key = Number(row.user_id)
+      if (!submissionsByUser.has(key)) submissionsByUser.set(key, [])
+      submissionsByUser.get(key).push(row)
+    })
+
+    return students.map((student) => {
+      const studentSubmissions = submissionsByUser.get(Number(student.user_id)) || []
+      const numberedSubmissions = studentSubmissions
+        .map((submission, index) => ({
+          ...publicSubmission(submission, { viewerUserId, canManage: true }),
+          attempt_number: index + 1
+        }))
+        .sort((left, right) => {
+          const timeCompare = String(right.created_at || '').localeCompare(String(left.created_at || ''))
+          return timeCompare || Number(right.id) - Number(left.id)
+        })
+
       return {
-        ...withStudent,
-        files: filesForSubmission(row.id),
-        feedback: canSeeFeedback ? this.feedbackForStudent(row.assignment_id, row.user_id) : null
+        user_id: student.user_id,
+        username: student.username,
+        email: student.email,
+        submitted: numberedSubmissions.length > 0,
+        submission_count: numberedSubmissions.length,
+        first_submission_at: studentSubmissions[0]?.created_at || null,
+        latest_submission_at: studentSubmissions[studentSubmissions.length - 1]?.created_at || null,
+        feedback: this.feedbackForStudent(assignmentId, student.user_id),
+        submissions: numberedSubmissions
       }
     })
   }
@@ -478,11 +517,7 @@ class Assignment {
   static findSubmission(id) {
     const row = readingMaterialsDb.prepare('SELECT * FROM assignment_submissions WHERE id = ?').get(Number(id))
     if (!row) return null
-    return {
-      ...attachUser(row, 'user_id', 'student_username'),
-      files: filesForSubmission(row.id),
-      feedback: this.feedbackForStudent(row.assignment_id, row.user_id)
-    }
+    return publicSubmission(row, { viewerUserId: row.user_id, canManage: true })
   }
 
   static findAssignmentFile(id) {

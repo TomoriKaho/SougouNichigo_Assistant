@@ -766,14 +766,26 @@ router.get('/classes/:id/assignments/:assignmentId', authMiddleware, (req, res) 
   if (!assignment) return
 
   const canManage = Classroom.canManageMaterials(req.params.id, { userId: req.user.id })
+  const submissions = canManage
+    ? []
+    : Assignment.listSubmissions({
+        assignmentId: assignment.id,
+        viewerUserId: req.user.id,
+        canManage,
+        includePublic: !!assignment.is_public
+      })
+  const studentSubmissions = canManage
+    ? Assignment.listStudentSubmissionSummaries({
+        classId: req.params.id,
+        assignmentId: assignment.id,
+        viewerUserId: req.user.id
+      })
+    : []
+
   res.json({
     assignment,
-    submissions: Assignment.listSubmissions({
-      assignmentId: assignment.id,
-      viewerUserId: req.user.id,
-      canManage,
-      includePublic: !!assignment.is_public
-    }),
+    submissions,
+    student_submissions: studentSubmissions,
     canManage
   })
 })
