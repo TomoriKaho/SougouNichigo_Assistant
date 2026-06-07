@@ -12,7 +12,8 @@ const { authMiddleware, signUserToken, USER_JWT_EXPIRES_IN } = require('../middl
 const assistantService = require('../services/assistantService')
 const emailCodeService = require('../services/emailCodeService')
 
-const USERNAME_PATTERN = /^[A-Za-z0-9]{6,15}$/
+const USERNAME_PATTERN = /^[\p{L}\p{N}]{2,15}$/u
+const USERNAME_MESSAGE = '用户名需为2-15个字符，仅支持各语言文字'
 const PASSWORD_PATTERN = /^[A-Za-z0-9!@#$%^&*()_+\-.]{8,20}$/
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -208,7 +209,7 @@ router.post('/register', (req, res) => {
   if (!emailCodeService.isPkuEmail(email)) return fieldError(res, 400, 'email', '仅支持PKU邮箱')
   if (!emailCode) return fieldError(res, 400, 'emailCode', '请输入邮箱验证码')
   if (!username) return fieldError(res, 400, 'username', '请输入用户名')
-  if (!USERNAME_PATTERN.test(username)) return fieldError(res, 400, 'username', '用户名需为6-15位字母或数字组合')
+  if (!USERNAME_PATTERN.test(username)) return fieldError(res, 400, 'username', USERNAME_MESSAGE)
   if (!password) return fieldError(res, 400, 'password', '请输入密码')
   if (!ALLOWED_USER_TYPES.includes(rawUserType)) return fieldError(res, 400, 'user_type', '请选择身份')
   if (userType === 'student' && !requestedGrade) return fieldError(res, 400, 'grade', '请选择年级')
@@ -326,7 +327,7 @@ router.patch('/me', authMiddleware, (req, res) => {
   if (req.body.username !== undefined) {
     const username = String(req.body.username || '').trim()
     if (!username) return fieldError(res, 400, 'username', '请输入用户名')
-    if (!USERNAME_PATTERN.test(username)) return fieldError(res, 400, 'username', '用户名需为6-15位字母或数字组合')
+    if (!USERNAME_PATTERN.test(username)) return fieldError(res, 400, 'username', USERNAME_MESSAGE)
     const existing = User.findRawByUsername(username)
     if (existing && Number(existing.id) !== Number(req.user.id)) {
       return fieldError(res, 409, 'username', '用户名已存在')
@@ -718,7 +719,8 @@ router.get('/classes/:id/assignments', authMiddleware, (req, res) => {
     limit: parseLimit(req.query.limit, 50, 500),
     offset: parseOffset(req.query.offset),
     keyword: req.query.keyword || '',
-    idOrder: req.query.id_order || req.query.idOrder || 'desc'
+    idOrder: req.query.id_order || req.query.idOrder || 'desc',
+    submissionOrder: req.query.submission_order || req.query.submissionOrder || ''
   })
 
   res.json({
@@ -769,17 +771,17 @@ router.get('/classes/:id/assignments/:assignmentId', authMiddleware, (req, res) 
   const submissions = canManage
     ? []
     : Assignment.listSubmissions({
-        assignmentId: assignment.id,
-        viewerUserId: req.user.id,
-        canManage,
-        includePublic: !!assignment.is_public
-      })
+      assignmentId: assignment.id,
+      viewerUserId: req.user.id,
+      canManage,
+      includePublic: !!assignment.is_public
+    })
   const studentSubmissions = canManage
     ? Assignment.listStudentSubmissionSummaries({
-        classId: req.params.id,
-        assignmentId: assignment.id,
-        viewerUserId: req.user.id
-      })
+      classId: req.params.id,
+      assignmentId: assignment.id,
+      viewerUserId: req.user.id
+    })
     : []
 
   res.json({

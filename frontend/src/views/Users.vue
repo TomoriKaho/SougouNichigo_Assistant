@@ -104,7 +104,7 @@
           </label>
           <label>
             用户名
-            <input v-model="form.username" />
+            <input v-model="form.username" maxlength="15" placeholder="2-15个文字" />
             <span v-if="formErrors.username" class="field-error">{{ formErrors.username }}</span>
           </label>
           <label>
@@ -156,7 +156,7 @@
           </label>
           <label>
             用户名
-            <input v-model="createForm.username" />
+            <input v-model="createForm.username" maxlength="15" placeholder="2-15个文字" />
             <span v-if="createErrors.username" class="field-error">{{ createErrors.username }}</span>
           </label>
           <label>
@@ -238,6 +238,8 @@ const toast = reactive({ visible: false, message: '', type: 'info' });
 
 const userTypeOptions = ['student', 'teacher'];
 const studentGradeOptions = ['大一上', '大一下', '大二上', '大二下', '高年级'];
+const USERNAME_PATTERN = /^[\p{L}\p{N}]{2,15}$/u;
+const USERNAME_MESSAGE = '用户名需为2-15个字符，仅支持各语言文字';
 const createRoleOptions = computed(() => (isDev.value ? ['user', 'admin', 'dev'] : ['user', 'admin']));
 const currentUserId = computed(() => Number(state.user?.id || 0));
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
@@ -431,7 +433,9 @@ function closeCreate() {
 
 function validateUserForm(target, errors, isCreate) {
   resetErrors(errors);
-  if (!target.username.trim()) errors.username = '请输入用户名';
+  const username = target.username.trim();
+  if (!username) errors.username = '请输入用户名';
+  else if (!USERNAME_PATTERN.test(username)) errors.username = USERNAME_MESSAGE;
   if (isCreate && !target.password.trim()) errors.password = '请输入密码';
   if (target.user_type === 'student' && !target.grade) errors.grade = '学生用户请选择年级';
   return !Object.values(errors).some(Boolean);

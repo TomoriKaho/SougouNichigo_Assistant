@@ -17,7 +17,7 @@
             :class="{ active: loginMethod === 'emailCode' }"
             @click="switchLoginMethod('emailCode')"
           >
-            邮箱验证
+            邮箱验证码登录
           </button>
         </div>
 
@@ -122,12 +122,13 @@
             v-model.trim="registerForm.username"
             autocomplete="username"
             :class="fieldStatus('username')"
-            placeholder="6-15位字母或数字"
+            maxlength="15"
+            placeholder="2-15个文字"
             @blur="validateField('username')"
             @input="validateFieldIfTouched('username')"
           />
           <span :class="registerErrors.username ? 'field-error' : 'field-hint'">
-            {{ registerErrors.username || '6-15位，只能使用英文字母和数字。' }}
+            {{ registerErrors.username || '在班级内展示的姓名，建议使用真实姓名作为用户名。' }}
           </span>
         </label>
         <label>
@@ -207,7 +208,7 @@ let loginCodeTimer = null;
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const emailCodePattern = /^\d{6}$/;
-const usernamePattern = /^[A-Za-z0-9]{6,15}$/;
+const usernamePattern = /^[\p{L}\p{N}]{2,15}$/u;
 const passwordPattern = /^[A-Za-z0-9!@#$%^&*()_+\-.]{8,20}$/;
 
 const errorText = computed(() => {
@@ -276,7 +277,7 @@ function validateField(field) {
 
   if (field === 'username') {
     if (!registerForm.username) registerErrors.username = '请输入用户名';
-    else if (!usernamePattern.test(registerForm.username)) registerErrors.username = '用户名需为6-15位字母或数字组合';
+    else if (!usernamePattern.test(registerForm.username)) registerErrors.username = '用户名需为2-15个字符，仅支持各语言文字';
     else registerErrors.username = '';
   }
 

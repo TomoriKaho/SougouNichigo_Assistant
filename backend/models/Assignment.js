@@ -223,7 +223,7 @@ function publicSubmission(row, { viewerUserId, canManage = false } = {}) {
 }
 
 class Assignment {
-  static list({ classId, userId, limit = 50, offset = 0, keyword = '', idOrder = 'desc' } = {}) {
+  static list({ classId, userId, limit = 50, offset = 0, keyword = '', idOrder = 'desc', submissionOrder = '' } = {}) {
     const clauses = ['class_id = ?']
     const params = [Number(classId)]
     const normalizedKeyword = String(keyword || '').trim().toLowerCase()
@@ -233,6 +233,10 @@ class Assignment {
     }
     const where = `WHERE ${clauses.join(' AND ')}`
     const order = String(idOrder || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC'
+    const submissionSort = String(submissionOrder || '').toLowerCase()
+    const orderBy = submissionSort === 'asc' || submissionSort === 'desc'
+      ? `submission_student_count ${submissionSort.toUpperCase()}, a.id ${order}`
+      : `a.id ${order}`
     const rows = readingMaterialsDb.prepare(`
       SELECT
         a.*,
@@ -248,7 +252,7 @@ class Assignment {
         ) AS my_latest_submission_at
       FROM assignments a
       ${where}
-      ORDER BY a.id ${order}
+      ORDER BY ${orderBy}
       LIMIT ? OFFSET ?
     `).all(Number(userId), ...params, Number(limit || 50), Number(offset || 0)).map(publicAssignment)
 

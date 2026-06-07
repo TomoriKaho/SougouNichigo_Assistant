@@ -2,7 +2,7 @@
   <div class="dashboard-page">
     <div v-if="isPrivileged" class="dashboard-top-row">
       <section class="card dashboard-welcome-card">
-        <h2 class="dashboard-welcome-text">欢迎回来，{{ welcomeText }}</h2>
+        <h2 class="dashboard-welcome-text">{{ welcomeText }}</h2>
         <p class="dashboard-welcome-subtext">
           {{ welcomeSubtext }}
         </p>
@@ -60,7 +60,7 @@
     <div v-else class="dashboard-user-sections">
       <div class="dashboard-user-row dashboard-user-row-top">
         <section class="card dashboard-welcome-card dashboard-user-panel">
-          <h2 class="dashboard-welcome-text">欢迎回来，{{ welcomeText }}</h2>
+          <h2 class="dashboard-welcome-text">{{ welcomeText }}</h2>
           <p class="dashboard-welcome-subtext">
             {{ welcomeSubtext }}
           </p>
@@ -267,9 +267,9 @@
             v-model.trim="accountForm.username"
             type="text"
             maxlength="15"
-            placeholder="请输入6-15位字母或数字"
+            placeholder="请输入2-15个文字"
           />
-          <span class="field-hint">6-15位，只能使用英文字母和数字。</span>
+          <span class="field-hint">在班级内展示的姓名，建议使用真实姓名作为用户名。</span>
         </label>
         <label class="field">
           <span>新密码</span>
@@ -333,7 +333,8 @@ import { useRouter } from 'vue-router';
 import { apiRequest } from '../utils/apiClient';
 import { useAuth } from '../composables/useAuth';
 
-const USERNAME_PATTERN = /^[A-Za-z0-9]{6,15}$/;
+const USERNAME_PATTERN = /^[\p{L}\p{N}]{2,15}$/u;
+const USERNAME_MESSAGE = '用户名需为2-15个字符，仅支持各语言文字';
 const studentGradeOptions = ['大一上', '大一下', '大二上', '大二下', '高年级'];
 const ASSISTANT_DOCKED_KEY = 'assistant:dockedToTopbar';
 
@@ -371,7 +372,11 @@ const contactOpen = ref(false);
 const toast = reactive({ visible: false, message: '', type: 'info' });
 const sharedChatEnabled = computed(() => Boolean(state.user?.share_context_chats ?? true));
 
-const welcomeText = computed(() => state.user?.username || state.user?.email || '管理员');
+const welcomeText = computed(() => {
+  const name = state.user?.username || state.user?.email || '用户';
+  const title = state.user?.user_type === 'teacher' ? '老师' : '同学';
+  return `欢迎回来，${name} ${title}！`;
+});
 const welcomeSubtext = computed(() => {
   if (!isPrivileged.value) {
     return isTeacher.value ? '您已登录総日ナビ。' : '您已登录総日ナビ。';
@@ -653,7 +658,7 @@ async function submitAccountSettings() {
     return;
   }
   if (!USERNAME_PATTERN.test(username)) {
-    accountError.value = '用户名需为6-15位字母或数字组合';
+    accountError.value = USERNAME_MESSAGE;
     return;
   }
   if (password) {

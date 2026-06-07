@@ -2131,6 +2131,18 @@ textarea:disabled {
   transform: translateY(7px);
 }
 
+button.assignment-return-button {
+  background: #fff;
+  color: #a92431;
+  border: 1px solid rgba(169, 36, 49, 0.38);
+  box-shadow: none;
+}
+
+button.assignment-return-button:hover {
+  background: #fff6f6;
+  box-shadow: 0 10px 22px rgba(169, 36, 49, 0.12);
+}
+
 .class-detail-inline-pagination {
   margin-top: 0;
   gap: 10px;
@@ -2208,6 +2220,21 @@ textarea:disabled {
 .class-assignments-table .classes-actions-header,
 .class-assignments-table .classes-actions-cell {
   text-align: left;
+}
+
+.table-sort-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.table-sort-button:hover {
+  box-shadow: none;
+  color: var(--theme-red-dark);
 }
 
 .class-assignments-table td.actions>button+button {
@@ -2456,10 +2483,12 @@ textarea:disabled {
 
 .study-footer-total {
   justify-self: start;
+  display: inline-flex;
+  align-items: center;
   white-space: nowrap;
   align-self: center;
-  line-height: 1;
-  transform: translateY(7px);
+  min-height: 40px;
+  line-height: 1.4;
 }
 
 .study-footer-pagination {
@@ -2495,7 +2524,6 @@ textarea:disabled {
 
 .word-study-footer-bar .study-footer-total {
   justify-self: auto;
-  transform: translateY(6px);
 }
 
 .management-pagination-total {
@@ -3816,27 +3844,20 @@ textarea:disabled {
 }
 
 .assignment-teacher-panel {
-  flex: 0 0 auto;
-  margin-top: 4px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-}
-
-.assignment-teacher-panel-header {
+  flex: 1;
+  min-height: 0;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 12px;
-}
-
-.assignment-teacher-panel-header h3 {
-  margin: 0 0 6px;
-  color: var(--theme-red-dark);
+  flex-direction: column;
+  gap: 12px;
 }
 
 .assignment-student-table-scroll {
-  max-height: 300px;
+  flex: 1;
+  max-height: none;
+  min-height: 0;
 }
 
 .assignment-student-status-table th:nth-child(1),
@@ -3877,15 +3898,21 @@ textarea:disabled {
 }
 
 .assignment-teacher-submission-modal {
-  width: min(980px, 96vw);
+  width: min(1360px, 98vw) !important;
+  max-height: 88vh;
+  overflow: auto;
+}
+
+.assignment-submission-submit-modal {
+  width: min(640px, 96vw) !important;
   max-height: 88vh;
   overflow: auto;
 }
 
 .assignment-teacher-submission-layout {
   display: grid;
-  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1.3fr) minmax(280px, 0.95fr);
+  gap: 24px;
   align-items: start;
 }
 
@@ -3926,22 +3953,93 @@ textarea:disabled {
 
 .assignment-submission-detail-pane {
   min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.assignment-feedback-inline-form {
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-}
-
-.assignment-feedback-inline-form h4 {
-  margin: 0 0 12px;
+.assignment-submission-detail-pane h4,
+.assignment-feedback-pane h4 {
+  margin: 0;
   color: var(--theme-red-dark);
 }
 
-.assignment-feedback-inline-form textarea {
-  min-height: 112px;
+.assignment-detail-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fffaf4;
+  padding: 16px;
+}
+
+.assignment-detail-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.assignment-detail-card h5 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.assignment-detail-card-body {
+  min-height: 180px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.assignment-file-action-stack {
+  margin: 0;
+}
+
+.assignment-feedback-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.assignment-feedback-pane textarea {
+  width: 100%;
+  min-height: 100%;
   resize: vertical;
+}
+
+.assignment-submission-detail-pane textarea {
+  width: 100%;
+  min-height: 100%;
+  resize: vertical;
+}
+
+.assignment-submission-detail-pane input[type="file"] {
+  max-width: 100%;
+}
+
+.assignment-feedback-pane input[type="file"] {
+  max-width: 100%;
+}
+
+.assignment-feedback-pane .assignment-inline-actions {
+  margin-top: auto;
+}
+
+@media (max-width: 1180px) {
+  .assignment-teacher-submission-modal {
+    width: min(96vw, 920px) !important;
+  }
+
+  .assignment-teacher-submission-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+
+  .assignment-submission-sidebar {
+    max-height: 240px;
+    padding-right: 0;
+  }
 }
 
 .assignment-detail-meta {

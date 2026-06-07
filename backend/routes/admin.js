@@ -21,6 +21,8 @@ const { Text } = require('../models/Text')
 const { ReadingMaterial } = require('../models/ReadingMaterial')
 const { Feedback, FEEDBACK_TYPES } = require('../models/Feedback')
 
+const USERNAME_PATTERN = /^[\p{L}\p{N}]{2,15}$/u
+const USERNAME_MESSAGE = '用户名需为2-15个字符，仅支持各语言文字'
 const BACKUP_DIR = path.join(dataDir, 'backups')
 const BACKUP_RECORDS_FILE = path.join(dataDir, 'backup_records.json')
 const IMPORT_RECORDS_FILE = path.join(dataDir, 'import_records.json')
@@ -33,6 +35,13 @@ function isDev(req) {
 
 function forbid(res, message = '无权限') {
   return res.status(403).json({ error: message })
+}
+
+function fieldError(res, status, field, message) {
+  return res.status(status).json({
+    error: message,
+    errors: { [field]: message }
+  })
 }
 
 function parseLimit(value, fallback = 50, max = 200) {
@@ -242,12 +251,15 @@ router.get('/users', requireAdmin, (req, res) => {
 })
 
 router.post('/users', requireAdmin, (req, res) => {
+  const username = String(req.body.username || '').trim()
   const role = String(req.body.role || 'user')
   const rawUserType = String(req.body.user_type || 'student')
   const userType = normalizeUserType(rawUserType)
   const requestedGrade = String(req.body.grade || '').trim()
   const grade = normalizeGrade(userType, requestedGrade)
 
+  if (!username) return fieldError(res, 400, 'username', '请输入用户名')
+  if (!USERNAME_PATTERN.test(username)) return fieldError(res, 400, 'username', USERNAME_MESSAGE)
   if (!ALLOWED_ROLES.includes(role)) {
     return res.status(400).json({ error: '角色无效' })
   }
@@ -263,7 +275,7 @@ router.post('/users', requireAdmin, (req, res) => {
 
   try {
     const id = User.create({
-      username: req.body.username,
+      username,
       email: req.body.email,
       password: req.body.password,
       role,
@@ -289,7 +301,12 @@ router.put('/users/:id', requireAdmin, (req, res) => {
   if (!canAdminAccessTarget(req, target)) return forbid(res, 'admin 不能修改 dev 用户')
 
   const payload = {}
-  if (req.body.username !== undefined) payload.username = req.body.username
+  if (req.body.username !== undefined) {
+    const username = String(req.body.username || '').trim()
+    if (!username) return fieldError(res, 400, 'username', '请输入用户名')
+    if (!USERNAME_PATTERN.test(username)) return fieldError(res, 400, 'username', USERNAME_MESSAGE)
+    payload.username = username
+  }
   if (req.body.email !== undefined) payload.email = req.body.email
   if (req.body.password) payload.password = req.body.password
 
