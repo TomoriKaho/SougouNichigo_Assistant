@@ -140,10 +140,25 @@
             :class="fieldStatus('password')"
             placeholder="8-20位，至少两类字符"
             @blur="validateField('password')"
-            @input="validateFieldIfTouched('password')"
+            @input="handlePasswordInput"
           />
           <span :class="registerErrors.password ? 'field-error' : 'field-hint'">
             {{ registerErrors.password || '支持字母、数字、!@#$%^&*()_+-.，至少包含两类。' }}
+          </span>
+        </label>
+        <label>
+          确认密码
+          <input
+            v-model="registerForm.confirmPassword"
+            autocomplete="new-password"
+            type="password"
+            :class="fieldStatus('confirmPassword')"
+            placeholder="请再次输入密码"
+            @blur="validateField('confirmPassword')"
+            @input="validateFieldIfTouched('confirmPassword')"
+          />
+          <span :class="registerErrors.confirmPassword ? 'field-error' : 'field-hint'">
+            {{ registerErrors.confirmPassword || '请再次输入相同密码。' }}
           </span>
         </label>
         <label>
@@ -194,9 +209,33 @@ const loginForm = reactive({ identifier: '', password: '' });
 const loginEmailForm = reactive({ email: '', emailCode: '' });
 const loginEmailErrors = reactive({ email: '', emailCode: '' });
 const loginEmailTouched = reactive({ email: false, emailCode: false });
-const registerForm = reactive({ email: '', emailCode: '', username: '', password: '', user_type: 'student', grade: '' });
-const registerErrors = reactive({ email: '', emailCode: '', username: '', password: '', user_type: '', grade: '' });
-const touched = reactive({ email: false, emailCode: false, username: false, password: false, user_type: false, grade: false });
+const registerForm = reactive({
+  email: '',
+  emailCode: '',
+  username: '',
+  password: '',
+  confirmPassword: '',
+  user_type: 'student',
+  grade: ''
+});
+const registerErrors = reactive({
+  email: '',
+  emailCode: '',
+  username: '',
+  password: '',
+  confirmPassword: '',
+  user_type: '',
+  grade: ''
+});
+const touched = reactive({
+  email: false,
+  emailCode: false,
+  username: false,
+  password: false,
+  confirmPassword: false,
+  user_type: false,
+  grade: false
+});
 const registerCodeCooldown = ref(0);
 const loginCodeCooldown = ref(0);
 const registerCodeSending = ref(false);
@@ -287,6 +326,13 @@ function validateField(field) {
     else registerErrors.password = '';
   }
 
+  if (field === 'confirmPassword') {
+    if (!registerForm.confirmPassword) registerErrors.confirmPassword = '请再次输入密码';
+    else if (!registerForm.password) registerErrors.confirmPassword = '请先输入密码';
+    else if (registerForm.confirmPassword !== registerForm.password) registerErrors.confirmPassword = '两次输入的密码不一致';
+    else registerErrors.confirmPassword = '';
+  }
+
   if (field === 'user_type') {
     if (!registerForm.user_type) registerErrors.user_type = '请选择身份';
     else registerErrors.user_type = '';
@@ -304,8 +350,13 @@ function validateFieldIfTouched(field) {
   if (touched[field] || registerForm[field]) validateField(field);
 }
 
+function handlePasswordInput() {
+  validateFieldIfTouched('password');
+  if (touched.confirmPassword || registerForm.confirmPassword) validateField('confirmPassword');
+}
+
 function validateRegisterForm() {
-  return ['email', 'emailCode', 'username', 'password', 'user_type', 'grade'].map(validateField).every(Boolean);
+  return ['email', 'emailCode', 'username', 'password', 'confirmPassword', 'user_type', 'grade'].map(validateField).every(Boolean);
 }
 
 function fieldStatus(field) {
@@ -314,6 +365,7 @@ function fieldStatus(field) {
   if (field === 'emailCode' && registerForm.emailCode && emailCodePattern.test(registerForm.emailCode)) return 'input-success';
   if (field === 'username' && registerForm.username && usernamePattern.test(registerForm.username)) return 'input-success';
   if (field === 'password' && registerForm.password && passwordIsValid(registerForm.password)) return 'input-success';
+  if (field === 'confirmPassword' && registerForm.confirmPassword && registerForm.confirmPassword === registerForm.password && passwordIsValid(registerForm.password)) return 'input-success';
   return '';
 }
 
@@ -322,12 +374,14 @@ function clearRegisterErrors() {
   registerErrors.emailCode = '';
   registerErrors.username = '';
   registerErrors.password = '';
+  registerErrors.confirmPassword = '';
   registerErrors.user_type = '';
   registerErrors.grade = '';
   touched.email = false;
   touched.emailCode = false;
   touched.username = false;
   touched.password = false;
+  touched.confirmPassword = false;
   touched.user_type = false;
   touched.grade = false;
 }
@@ -337,6 +391,7 @@ function resetRegisterForm() {
   registerForm.emailCode = '';
   registerForm.username = '';
   registerForm.password = '';
+  registerForm.confirmPassword = '';
   registerForm.user_type = 'student';
   registerForm.grade = '';
   registerCodeNotice.value = '';
