@@ -4,7 +4,7 @@ function providerConfig() {
   return {
     provider: getEnv('AI_PROVIDER'),
     model: getEnv('AI_MODEL'),
-    apiKey: getEnv('DASHSCOPE_API_KEY', ''),
+    apiKey: getEnv('AI_API_KEY', ''),
     baseUrl: getEnv('AI_BASE_URL'),
     assignedSites: getEnv('AI_SEARCH_ASSIGNED_SITES', '')
       .split(',')
@@ -61,7 +61,7 @@ function chatRequestBody({ messages, enableSearch = false, forcedSearch = false,
     throw new Error('缺少 AI_BASE_URL，请在 backend/.env 中配置')
   }
   if (!config.apiKey) {
-    throw new Error('缺少 DASHSCOPE_API_KEY，无法调用 AI 服务')
+    throw new Error('缺少 AI_API_KEY，无法调用 AI 服务')
   }
 
   const body = {
