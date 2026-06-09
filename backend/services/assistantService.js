@@ -4,6 +4,8 @@ const { Vocabulary } = require('../models/Vocabulary')
 const { completeChat, streamChat } = require('./aiProvider')
 const { buildMessages, shouldEnableSearch, suggestedQuestions } = require('./promptTemplates')
 
+const MAX_PROCESSING_CONVERSATIONS_PER_USER = 3
+
 function decorateConversation(conversation, currentUserId) {
   if (!conversation) return null
   return {
@@ -151,56 +153,76 @@ async function streamAssistantReply({ userId, conversationId, content, templateK
     throw error
   }
 
+  const beginResult = AssistantConversation.beginProcessing(conversation.id, userId, MAX_PROCESSING_CONVERSATIONS_PER_USER)
+  if (!beginResult.ok) {
+    const error = new Error(
+      beginResult.reason === 'limit'
+        ? `同一时间最多只能有 ${MAX_PROCESSING_CONVERSATIONS_PER_USER} 个正在思考中的提问`
+        : '这个对话正在思考中，请等待回复结束'
+    )
+    error.status = 429
+    throw error
+  }
+
+  const processingConversation = beginResult.conversation || conversation
+
   const existingMessages = AssistantConversation.messages(conversation.id)
   const isFirstUserQuestion = !existingMessages.some((message) => message.role === 'user')
-  const shouldGenerateFreeTitle = conversation.context_type === 'none' && isFirstUserQuestion
+  const shouldGenerateTitle = isFirstUserQuestion
 
-  AssistantConversation.addMessage({
-    conversationId: conversation.id,
-    role: 'user',
-    content: question
-  })
+  try {
+    AssistantConversation.addMessage({
+      conversationId: conversation.id,
+      role: 'user',
+      content: question
+    })
 
-  const currentMessages = AssistantConversation.messages(conversation.id)
-  const resolvedTemplateKey = templateKey || conversation.template_key || 'general_qa'
-  const searchDecision = shouldEnableSearch({
-    question,
-    templateKey: resolvedTemplateKey,
-    forceWebSearch
-  })
-  const promptMessages = buildMessages({
-    conversation,
-    messages: currentMessages,
-    templateKey: resolvedTemplateKey
-  })
+    const currentMessages = AssistantConversation.messages(conversation.id)
+    const resolvedTemplateKey = templateKey || processingConversation.template_key || 'general_qa'
+    const searchDecision = shouldEnableSearch({
+      question,
+      templateKey: resolvedTemplateKey,
+      forceWebSearch
+    })
+    const promptMessages = buildMessages({
+      conversation: processingConversation,
+      messages: currentMessages,
+      templateKey: resolvedTemplateKey
+    })
 
-  let answer = ''
-  for await (const delta of streamChat({
-    messages: promptMessages,
-    enableSearch: searchDecision.enableSearch,
-    forcedSearch: searchDecision.forcedSearch
-  })) {
-    answer += delta
-    onDelta(delta)
-  }
+    let answer = ''
+    for await (const delta of streamChat({
+      messages: promptMessages,
+      enableSearch: searchDecision.enableSearch,
+      forcedSearch: searchDecision.forcedSearch
+    })) {
+      answer += delta
+      onDelta(delta)
+    }
 
-  const saved = AssistantConversation.addMessage({
-    conversationId: conversation.id,
-    role: 'assistant',
-    content: answer || '（AI 服务未返回内容）',
-    usedWebSearch: searchDecision.enableSearch,
-    citations: []
-  })
+    const saved = AssistantConversation.addMessage({
+      conversationId: conversation.id,
+      role: 'assistant',
+      content: answer || '（AI 服务未返回内容）',
+      usedWebSearch: searchDecision.enableSearch,
+      citations: []
+    })
 
-  if (shouldGenerateFreeTitle) {
-    buildFreeConversationTitle(question)
-      .then((title) => AssistantConversation.updateContextLabel(conversation.id, title))
-      .catch(() => {})
-  }
+    AssistantConversation.finishProcessing(conversation.id)
 
-  return {
-    message: saved,
-    conversation: decorateConversation(AssistantConversation.findById(conversation.id), userId)
+    if (shouldGenerateTitle) {
+      buildFreeConversationTitle(question)
+        .then((title) => AssistantConversation.updateContextLabel(conversation.id, title))
+        .catch(() => {})
+    }
+
+    return {
+      message: saved,
+      conversation: decorateConversation(AssistantConversation.findById(conversation.id), userId)
+    }
+  } catch (error) {
+    AssistantConversation.finishProcessing(conversation.id)
+    throw error
   }
 }
 

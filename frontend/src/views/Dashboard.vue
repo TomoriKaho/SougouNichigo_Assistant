@@ -435,6 +435,7 @@ function enterClass(item) {
 }
 
 function assistantConversationTitle(item) {
+  if (item?.is_processing || item?.reply_status === 'processing') return '正在思考中';
   return item?.context_label || '自由提问';
 }
 
@@ -447,9 +448,7 @@ function assistantConversationPrefix(contextType) {
 
 function assistantConversationDisplayTitle(item) {
   if (!item) return '自由提问';
-  const title = assistantConversationTitle(item);
-  if (item.context_type === 'none') return title;
-  return `${assistantConversationPrefix(item.context_type)}${title}`;
+  return assistantConversationTitle(item);
 }
 
 function formatHistoryTime(value) {

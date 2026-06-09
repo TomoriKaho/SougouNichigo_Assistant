@@ -216,11 +216,16 @@ function initUserDatabase() {
       context_snapshot_json TEXT,
       template_key TEXT NOT NULL DEFAULT 'general_qa',
       visibility TEXT NOT NULL DEFAULT 'private',
+      reply_status TEXT NOT NULL DEFAULT 'idle',
+      reply_started_at TEXT,
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `)
+
+  ensureColumn(userDb, 'assistant_conversations', 'reply_status', "reply_status TEXT NOT NULL DEFAULT 'idle'")
+  ensureColumn(userDb, 'assistant_conversations', 'reply_started_at', 'reply_started_at TEXT')
 
   userDb.exec(`
     CREATE TABLE IF NOT EXISTS assistant_messages (

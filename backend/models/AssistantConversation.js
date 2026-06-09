@@ -3,6 +3,7 @@ const { userDb } = require('../database/db')
 const CONTEXT_TYPES = new Set(['none', 'vocabulary', 'grammar', 'text'])
 const VISIBILITIES = new Set(['private', 'context_shared'])
 const MESSAGE_ROLES = new Set(['user', 'assistant'])
+const REPLY_STATUSES = new Set(['idle', 'processing'])
 
 function normalizeContextType(value) {
   const normalized = String(value || 'none').trim()
@@ -31,8 +32,11 @@ function parseJson(value, fallback = null) {
 function mapConversation(row) {
   if (!row) return null
   const snapshot = parseJson(row.context_snapshot_json)
+  const replyStatus = REPLY_STATUSES.has(row.reply_status) ? row.reply_status : 'idle'
   return {
     ...row,
+    reply_status: replyStatus,
+    is_processing: replyStatus === 'processing',
     context_snapshot: snapshot,
     is_shared: row.visibility === 'context_shared',
     last_message_at: row.last_message_at || row.updated_at,
@@ -200,6 +204,50 @@ class AssistantConversation {
     return this.findOwnedById(id, userId)
   }
 
+  static countProcessingOwned(userId) {
+    return userDb.prepare(`
+      SELECT COUNT(*) AS total
+      FROM assistant_conversations
+      WHERE user_id = ? AND reply_status = 'processing'
+    `).get(Number(userId)).total
+  }
+
+  static beginProcessing(id, userId, maxProcessing = 3) {
+    const transaction = userDb.transaction(() => {
+      const conversation = this.findOwnedById(id, userId)
+      if (!conversation) return { ok: false, reason: 'missing' }
+      if (conversation.reply_status === 'processing') return { ok: false, reason: 'conversation_processing' }
+
+      const processingCount = this.countProcessingOwned(userId)
+      if (processingCount >= Number(maxProcessing || 3)) {
+        return { ok: false, reason: 'limit' }
+      }
+
+      userDb.prepare(`
+        UPDATE assistant_conversations
+        SET reply_status = 'processing',
+            reply_started_at = datetime('now', 'localtime'),
+            updated_at = datetime('now', 'localtime')
+        WHERE id = ? AND user_id = ?
+      `).run(Number(id), Number(userId))
+
+      return { ok: true, conversation: this.findOwnedById(id, userId) }
+    })
+
+    return transaction()
+  }
+
+  static finishProcessing(id) {
+    userDb.prepare(`
+      UPDATE assistant_conversations
+      SET reply_status = 'idle',
+          reply_started_at = NULL,
+          updated_at = datetime('now', 'localtime')
+      WHERE id = ?
+    `).run(Number(id))
+    return this.findById(id)
+  }
+
   static findById(id) {
     return mapConversation(userDb.prepare(`
       SELECT
@@ -281,5 +329,6 @@ class AssistantConversation {
 module.exports = {
   AssistantConversation,
   CONTEXT_TYPES,
-  VISIBILITIES
+  VISIBILITIES,
+  REPLY_STATUSES
 }

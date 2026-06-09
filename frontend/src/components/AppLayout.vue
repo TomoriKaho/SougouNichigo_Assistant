@@ -704,16 +704,40 @@ function mapAssistantMessage(message) {
   };
 }
 
+function assistantConversationIsProcessing(item) {
+  return item?.is_processing || item?.reply_status === 'processing';
+}
+
+function appendAssistantProcessingPlaceholder(messages, conversation) {
+  if (!assistantConversationIsProcessing(conversation)) return messages;
+  const lastMessage = messages[messages.length - 1];
+  if (lastMessage?.role === 'assistant' && lastMessage.phase === 'thinking') return messages;
+  if (lastMessage?.role === 'assistant' && !lastMessage.content) return messages;
+
+  return [
+    ...messages,
+    {
+      id: `thinking-${conversation.id}`,
+      role: 'assistant',
+      content: '',
+      displayContent: '',
+      created_at: conversation.reply_started_at || new Date().toISOString(),
+      phase: 'thinking'
+    }
+  ];
+}
+
 function setAssistantConversation(payload) {
-  assistantActiveConversation.value = payload?.conversation || null;
-  assistantMessages.value = (payload?.messages || []).map(mapAssistantMessage);
+  const conversation = payload?.conversation || null;
+  assistantActiveConversation.value = conversation;
+  assistantMessages.value = appendAssistantProcessingPlaceholder((payload?.messages || []).map(mapAssistantMessage), conversation);
   const maxMessageId = assistantMessages.value.reduce((max, message) => {
     const id = Number(message.id);
     return Number.isFinite(id) ? Math.max(max, id) : max;
   }, assistantMessageId);
   assistantMessageId = maxMessageId + 1;
   assistantHistoryOpen.value = false;
-  assistantState.value = 'idle';
+  assistantState.value = assistantConversationIsProcessing(conversation) ? 'thinking' : 'idle';
 }
 
 function resetAssistantDraftConversation() {
@@ -754,7 +778,7 @@ function restoreAssistantOwnedConversationSnapshot() {
   assistantActiveConversation.value = snapshot.conversation ? { ...snapshot.conversation } : null;
   assistantMessages.value = snapshot.messages.map((message) => ({ ...message }));
   assistantInput.value = snapshot.input || '';
-  assistantState.value = 'idle';
+  assistantState.value = assistantConversationIsProcessing(assistantActiveConversation.value) ? 'thinking' : 'idle';
   recalculateAssistantMessageId();
   scrollAssistantChatToBottom();
 }
@@ -767,22 +791,14 @@ function assistantConversationPrefix(contextType) {
 }
 
 function assistantConversationEditableTitle(item) {
+  if (assistantConversationIsProcessing(item)) return '正在思考中';
   if (!item) return '自由提问';
   const rawLabel = String(item.context_label || '').trim();
-  if (!rawLabel) return item.context_type === 'none' ? '自由提问' : '';
-  const prefix = assistantConversationPrefix(item.context_type);
-  if (prefix && rawLabel.startsWith(prefix)) {
-    return rawLabel.slice(prefix.length).trim();
-  }
-  return rawLabel;
+  return rawLabel || '自由提问';
 }
 
 function assistantConversationDisplayTitle(item) {
-  if (!item) return '自由提问';
-  const label = assistantConversationEditableTitle(item);
-  if (item.context_type === 'none') return label || '自由提问';
-  const prefix = assistantConversationPrefix(item.context_type);
-  return `${prefix}${label || '-'}`;
+  return assistantConversationEditableTitle(item);
 }
 
 function formatAssistantTime(value) {
@@ -989,6 +1005,10 @@ function handleAssistantHistoryPointerDown(event) {
 
 function startAssistantConversationRename(item) {
   if (!item?.id || assistantHistoryMode.value !== 'own') return;
+  if (assistantConversationIsProcessing(item)) {
+    showToast('正在思考中的对话暂不能重命名', 'error');
+    return;
+  }
   assistantRenameConversationId.value = item.id;
   assistantRenameDraft.value = assistantConversationEditableTitle(item);
   nextTick(() => {
@@ -1305,10 +1325,19 @@ async function streamAssistantMessage({ conversationId, content, templateKey, fo
   let buffer = '';
   let receivedDelta = false;
 
+  function isActiveStreamConversation() {
+    return Number(assistantActiveConversation.value?.id) === Number(conversationId);
+  }
+
+  function isVisibleReplyMessage() {
+    return assistantMessages.value.includes(replyMessage);
+  }
+
   async function processBlock(block) {
     if (!block.trim()) return;
     const payload = parseSseBlock(block);
     if (payload.event === 'delta' && payload.data?.content) {
+      if (!isActiveStreamConversation() || !isVisibleReplyMessage()) return;
       if (!receivedDelta) {
         receivedDelta = true;
       }
@@ -1317,6 +1346,11 @@ async function streamAssistantMessage({ conversationId, content, templateKey, fo
     }
 
     if (payload.event === 'done') {
+      if (!isActiveStreamConversation()) return;
+      if (!isVisibleReplyMessage()) {
+        await loadAssistantConversation(conversationId);
+        return;
+      }
       if (payload.data?.conversation) {
         assistantActiveConversation.value = payload.data.conversation;
       }
@@ -1356,6 +1390,7 @@ async function streamAssistantMessage({ conversationId, content, templateKey, fo
   }
 
   if (assistantState.value !== 'idle') {
+    if (!isActiveStreamConversation() || !isVisibleReplyMessage()) return;
     await finalizeAssistantRender(replyMessage, assistantMessageCopyContent(replyMessage), receivedDelta);
   }
 }
@@ -1949,8 +1984,12 @@ async function sendAssistantMessage({ content, templateKey, forceWebSearch } = {
       await loadAssistantHistory();
     }
   } catch (err) {
-    abortAssistantRender(replyMessage, err instanceof ApiError ? err.message : 'AI 回复失败，请稍后重试');
-    showToast(assistantMessageCopyContent(replyMessage), 'error');
+    if (Number(assistantActiveConversation.value?.id) === Number(conversation.id) && assistantMessages.value.includes(replyMessage)) {
+      abortAssistantRender(replyMessage, err instanceof ApiError ? err.message : 'AI 回复失败，请稍后重试');
+      showToast(assistantMessageCopyContent(replyMessage), 'error');
+    } else {
+      showToast(err instanceof ApiError ? err.message : 'AI 回复失败，请稍后重试', 'error');
+    }
   }
 }
 
