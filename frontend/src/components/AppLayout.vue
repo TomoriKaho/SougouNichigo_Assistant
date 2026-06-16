@@ -177,6 +177,7 @@
                       v-if="assistantHistoryMode === 'own'"
                       class="assistant-history-item-delete"
                       type="button"
+                      :disabled="assistantChatLocked"
                       @click="deleteAssistantConversation(item)"
                     >
                       删除
@@ -199,7 +200,7 @@
                 </button>
               </div>
 
-              <div ref="assistantChatBodyRef" class="assistant-chat-body">
+              <div ref="assistantChatBodyRef" class="assistant-chat-body" @scroll.passive="handleAssistantChatScroll">
                 <div
                   v-for="message in assistantMessages"
                   :key="message.id"
@@ -212,10 +213,18 @@
                         <span class="assistant-thinking-text">思考中...</span>
                       </template>
                       <template v-else-if="message.role === 'assistant' && message.phase === 'replying'">
-                        <div
-                          class="assistant-message-streaming"
-                          v-html="renderAssistantStreamingMarkdown(assistantMessageDisplayContent(message))"
-                        ></div>
+                        <div class="assistant-message-streaming">
+                          <div
+                            v-if="assistantStreamingRenderedHtml(message)"
+                            class="assistant-message-markdown assistant-message-markdown-stream"
+                            v-html="assistantStreamingRenderedHtml(message)"
+                          ></div>
+                          <div
+                            v-if="assistantStreamingPendingText(message) || !assistantStreamingRenderedHtml(message)"
+                            class="assistant-message-plain assistant-message-plain-stream"
+                            v-html="renderAssistantStreamingText(assistantStreamingPendingText(message))"
+                          ></div>
+                        </div>
                       </template>
                       <template v-else>
                         <div
@@ -254,18 +263,18 @@
                 </div>
 
                 <div
-                  v-if="(assistantSuggestedQuestions.length || assistantCanViewSharedHistory) && !assistantReadOnly && !assistantBusy"
+                  v-if="((assistantSuggestedQuestions.length && !assistantChatLocked) || assistantCanViewSharedHistory) && !assistantReadOnly"
                   class="assistant-message assistant-message-assistant assistant-message-suggestions"
                 >
                   <div class="assistant-message-stack assistant-suggestion-stack">
-                    <div v-if="assistantSuggestedQuestions.length" class="assistant-suggestion-caption">你也可以直接点下面的问题：</div>
-                    <div v-if="assistantSuggestedQuestions.length" class="assistant-inline-suggestions">
+                    <div v-if="assistantSuggestedQuestions.length && !assistantChatLocked" class="assistant-suggestion-caption">你也可以直接点下面的问题：</div>
+                    <div v-if="assistantSuggestedQuestions.length && !assistantChatLocked" class="assistant-inline-suggestions">
                       <button
                         v-for="question in assistantSuggestedQuestions"
                         :key="question.key"
                         class="ghost"
                         type="button"
-                        :disabled="assistantBusy"
+                        :disabled="assistantChatLocked"
                         @click="sendAssistantQuickQuestion(question)"
                       >
                         {{ question.label }}
@@ -276,7 +285,7 @@
                       <button
                         class="assistant-suggestion-alt-button"
                         type="button"
-                        :disabled="assistantBusy || assistantHistoryLoading"
+                        :disabled="assistantHistoryLoading"
                         @click="openAssistantSharedHistory"
                       >
                         看看其他同学的提问历史
@@ -286,12 +295,14 @@
                 </div>
               </div>
 
+              <div class="assistant-chat-disclaimer">AI回答可能会犯错，请核实重要信息。</div>
+
               <form class="assistant-chat-composer" @submit.prevent="submitAssistantMessage">
                 <textarea
                   v-model.trim="assistantInput"
                   :class="{ 'assistant-input-invalid': assistantInputTooLong }"
                   rows="3"
-                  :disabled="assistantBusy || assistantReadOnly"
+                  :disabled="assistantChatLocked || assistantReadOnly"
                   placeholder="输入你想问的问题
 按 Enter 键发送，Shift+Enter 键换行"
                   @keydown="handleAssistantComposerKeydown"
@@ -300,7 +311,7 @@
                   <button
                     class="ghost assistant-history-toggle"
                     type="button"
-                    :disabled="assistantBusy"
+                    :disabled="assistantChatLocked"
                     @click="startAssistantNewConversation"
                   >
                     新对话
@@ -308,8 +319,8 @@
                   <button class="ghost assistant-history-toggle" type="button" @click="toggleAssistantHistory">
                     我的对话历史
                   </button>
-                  <button type="submit" :disabled="assistantBusy || assistantReadOnly || !assistantInput.trim()">
-                    {{ assistantBusy ? '处理中...' : '发送' }}
+                  <button type="submit" :disabled="assistantChatLocked || assistantReadOnly || !assistantInput.trim()">
+                    {{ assistantChatLocked ? '处理中...' : '发送' }}
                   </button>
                 </div>
               </form>
@@ -419,14 +430,20 @@ let assistantSleepTimer = null;
 let assistantOrbPressTimer = null;
 let assistantPanelSnapbackTimer = null;
 let assistantSidebarAdjustTimer = null;
-let assistantStreamStartTimer = null;
+const assistantTypewriterDelayMs = 16;
+let assistantRenderedMarkdownSource = '';
+let assistantRenderedMarkdownHtml = '';
+let assistantStreamingScrollRaf = 0;
 const assistantStreamRender = reactive({
   activeMessageId: null,
   queue: [],
   started: false,
+  responseReady: false,
   firstDeltaAt: 0,
   completed: false,
   finalContent: '',
+  renderedMarkdownHtml: '',
+  pendingText: '',
   running: false,
   completionPromise: null,
   resolveCompletion: null
@@ -454,6 +471,7 @@ const assistantHistoryTotal = ref(0);
 const assistantSharedHistoryAvailable = ref(false);
 const assistantRenameConversationId = ref(null);
 const assistantRenameDraft = ref('');
+const assistantAutoScrollEnabled = ref(true);
 const assistantRenameInputRef = ref(null);
 const assistantOwnedConversationSnapshot = ref(null);
 let assistantSharedHistoryCheckToken = 0;
@@ -534,6 +552,8 @@ const showAssistantOrb = computed(() => Boolean(user.value && isUserMode.value &
 const showAssistantTopbarButton = computed(() => Boolean(user.value && isUserMode.value && assistantDockedToTopbar.value));
 const showAssistantWidget = computed(() => Boolean(user.value && isUserMode.value && (showAssistantOrb.value || showAssistantTopbarButton.value || assistantOpen.value)));
 const assistantBusy = computed(() => assistantState.value === 'thinking' || assistantState.value === 'replying');
+const assistantRequestPending = ref(false);
+const assistantChatLocked = computed(() => assistantBusy.value || assistantRequestPending.value);
 const assistantHappyActive = computed(() => !assistantBusy.value && (assistantHover.value || assistantOpen.value));
 const assistantCurrentImage = computed(() => {
   if (assistantOrbDragging.value) return assistantSadImage;
@@ -592,6 +612,12 @@ function showToast(message, type = 'info') {
   }, 1600);
 }
 
+function guardAssistantChatLocked(message = '当前仍有对话在处理中，请等待完成后再发起新聊天') {
+  if (!assistantChatLocked.value) return false;
+  showToast(message, 'error');
+  return true;
+}
+
 function emphasizeAssistantContextPrompt(content) {
   const text = String(content || '');
   return text
@@ -647,23 +673,42 @@ function splitStreamingMarkdown(content) {
   return { rendered, pending };
 }
 
-function renderAssistantStreamingMarkdown(content) {
+function updateAssistantStreamingSegments(content) {
   const { rendered, pending } = splitStreamingMarkdown(content);
-  let html = '';
 
   if (rendered.trim()) {
-    html += `<div class="assistant-message-markdown assistant-message-markdown-stream">${markdownRenderer.render(rendered)}</div>`;
+    if (assistantRenderedMarkdownSource !== rendered) {
+      assistantRenderedMarkdownSource = rendered;
+      assistantRenderedMarkdownHtml = markdownRenderer.render(rendered);
+    }
+    assistantStreamRender.renderedMarkdownHtml = assistantRenderedMarkdownHtml;
+  } else {
+    assistantRenderedMarkdownSource = '';
+    assistantRenderedMarkdownHtml = '';
+    assistantStreamRender.renderedMarkdownHtml = '';
   }
 
-  if (pending) {
-    html += `<div class="assistant-message-plain assistant-message-plain-stream">${escapeAssistantHtml(pending).replace(/\n/g, '<br>')}</div>`;
-  }
-
-  return html || '<div class="assistant-message-plain assistant-message-plain-stream"></div>';
+  assistantStreamRender.pendingText = pending || '';
 }
 
 function assistantMessageDisplayContent(message) {
   return message?.displayContent ?? message?.content ?? '';
+}
+
+function renderAssistantStreamingText(content) {
+  return escapeAssistantHtml(content).replace(/\n/g, '<br>');
+}
+
+function assistantStreamingRenderedHtml(message) {
+  if (assistantStreamRender.activeMessageId !== message?.id) return '';
+  return assistantStreamRender.renderedMarkdownHtml || '';
+}
+
+function assistantStreamingPendingText(message) {
+  if (assistantStreamRender.activeMessageId !== message?.id) {
+    return assistantMessageDisplayContent(message);
+  }
+  return assistantStreamRender.pendingText || '';
 }
 
 function assistantMessageCopyContent(message) {
@@ -682,7 +727,18 @@ function createAssistantWelcomeMessage() {
   };
 }
 
+function assistantChatIsNearBottom() {
+  const element = assistantChatBodyRef.value;
+  if (!element) return true;
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= 16;
+}
+
+function handleAssistantChatScroll() {
+  assistantAutoScrollEnabled.value = assistantChatIsNearBottom();
+}
+
 function scrollAssistantChatToBottom() {
+  assistantAutoScrollEnabled.value = true;
   nextTick(() => {
     requestAnimationFrame(() => {
       const element = assistantChatBodyRef.value;
@@ -945,10 +1001,7 @@ async function returnToAssistantSharedHistory() {
 }
 
 async function startAssistantNewConversation() {
-  if (assistantBusy.value) {
-    showToast('AI 正在回复中', 'error');
-    return;
-  }
+  if (guardAssistantChatLocked()) return;
 
   try {
     assistantOwnedConversationSnapshot.value = null;
@@ -969,6 +1022,7 @@ function activateAssistantHistoryItem(item) {
 
 async function deleteAssistantConversation(item) {
   if (!item?.id) return;
+  if (guardAssistantChatLocked('当前仍有对话在处理中，请等待完成后再管理历史')) return;
   if (!window.confirm('确认删除这条对话历史？')) return;
 
   try {
@@ -1005,6 +1059,7 @@ function handleAssistantHistoryPointerDown(event) {
 
 function startAssistantConversationRename(item) {
   if (!item?.id || assistantHistoryMode.value !== 'own') return;
+  if (guardAssistantChatLocked('当前仍有对话在处理中，请等待完成后再管理历史')) return;
   if (assistantConversationIsProcessing(item)) {
     showToast('正在思考中的对话暂不能重命名', 'error');
     return;
@@ -1105,21 +1160,31 @@ function sleep(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-function clearAssistantStreamStartTimer() {
-  if (assistantStreamStartTimer) {
-    clearTimeout(assistantStreamStartTimer);
-    assistantStreamStartTimer = null;
-  }
+function scheduleAssistantStreamingScroll() {
+  if (!assistantAutoScrollEnabled.value) return;
+  if (assistantStreamingScrollRaf) return;
+  assistantStreamingScrollRaf = requestAnimationFrame(() => {
+    assistantStreamingScrollRaf = 0;
+    scrollAssistantStreamingToBottom();
+  });
 }
 
 function resetAssistantStreamRender() {
-  clearAssistantStreamStartTimer();
   assistantStreamRender.activeMessageId = null;
   assistantStreamRender.queue = [];
   assistantStreamRender.started = false;
+  assistantStreamRender.responseReady = false;
   assistantStreamRender.firstDeltaAt = 0;
   assistantStreamRender.completed = false;
   assistantStreamRender.finalContent = '';
+  assistantStreamRender.renderedMarkdownHtml = '';
+  assistantStreamRender.pendingText = '';
+  assistantRenderedMarkdownSource = '';
+  assistantRenderedMarkdownHtml = '';
+  if (assistantStreamingScrollRaf) {
+    cancelAnimationFrame(assistantStreamingScrollRaf);
+    assistantStreamingScrollRaf = 0;
+  }
   assistantStreamRender.running = false;
   assistantStreamRender.completionPromise = null;
   assistantStreamRender.resolveCompletion = null;
@@ -1134,32 +1199,6 @@ function ensureAssistantRenderTarget(message) {
   });
 }
 
-function assistantRenderBatchSize() {
-  const size = assistantStreamRender.queue.length;
-  if (size > 360) return 4;
-  if (size > 140) return 3;
-  if (size > 40) return 2;
-  return 1;
-}
-
-function assistantShouldStartStreaming() {
-  if (assistantStreamRender.started) return true;
-  if (assistantStreamRender.queue.length >= 48) return true;
-  const preview = assistantStreamRender.queue.join('');
-  return /[。！？!?：:\n]$/.test(preview);
-}
-
-function startAssistantStreaming(message) {
-  if (assistantStreamRender.started) return;
-  assistantStreamRender.started = true;
-  clearAssistantStreamStartTimer();
-  if (message.displayContent === undefined) {
-    message.displayContent = '';
-  }
-  message.phase = 'replying';
-  assistantState.value = 'replying';
-}
-
 function scrollAssistantStreamingToBottom() {
   const element = assistantChatBodyRef.value;
   if (!element) return;
@@ -1167,62 +1206,52 @@ function scrollAssistantStreamingToBottom() {
 }
 
 async function runAssistantRenderLoop(message) {
-  if (assistantStreamRender.running) return assistantStreamRender.completionPromise;
+  if (assistantStreamRender.running) {
+    if (assistantStreamRender.completionPromise) {
+      await assistantStreamRender.completionPromise;
+    }
+    return;
+  }
   assistantStreamRender.running = true;
+  const finalContent = assistantStreamRender.finalContent || assistantMessageCopyContent(message);
+  const chars = Array.from(finalContent);
 
-  while (assistantStreamRender.activeMessageId === message.id) {
-    if (!assistantStreamRender.started) {
-      if (assistantStreamRender.completed) {
-        const finalContent = assistantStreamRender.finalContent || assistantMessageCopyContent(message);
-        const displayedContent = assistantMessageDisplayContent(message);
-        if (!assistantStreamRender.queue.length && finalContent && finalContent !== displayedContent) {
-          const remaining = finalContent.startsWith(displayedContent)
-            ? finalContent.slice(displayedContent.length)
-            : finalContent;
-          assistantStreamRender.queue.push(...Array.from(remaining));
-        }
-      }
+  message.content = '';
+  message.displayContent = '';
 
-      if (assistantStreamRender.queue.length) {
-        startAssistantStreaming(message);
-      } else {
-        await sleep(20);
-        continue;
-      }
-    }
-
-    if (assistantStreamRender.queue.length) {
-      const batch = assistantStreamRender.queue.splice(0, assistantRenderBatchSize()).join('');
-      message.displayContent = `${assistantMessageDisplayContent(message)}${batch}`;
-      scrollAssistantStreamingToBottom();
-      await sleep(22);
-      continue;
-    }
-
-    if (assistantStreamRender.completed) {
-      const finalContent = assistantStreamRender.finalContent || assistantMessageCopyContent(message);
-      const displayedContent = assistantMessageDisplayContent(message);
-      if (finalContent && displayedContent !== finalContent) {
-        if (finalContent.startsWith(displayedContent)) {
-          assistantStreamRender.queue.push(...Array.from(finalContent.slice(displayedContent.length)));
-          continue;
-        }
-      }
-      message.content = finalContent || displayedContent;
-      message.displayContent = finalContent && finalContent.startsWith(displayedContent)
-        ? finalContent
-        : displayedContent;
-      message.phase = 'done';
-      assistantState.value = 'idle';
-      const resolve = assistantStreamRender.resolveCompletion;
-      resetAssistantStreamRender();
-      resolve?.();
-      return;
-    }
-
-    await sleep(40);
+  if (!chars.length) {
+    message.phase = 'done';
+    assistantState.value = 'idle';
+    const resolve = assistantStreamRender.resolveCompletion;
+    resetAssistantStreamRender();
+    resolve?.();
+    return;
   }
 
+  message.displayContent = chars.shift();
+  updateAssistantStreamingSegments(message.displayContent);
+  message.phase = 'replying';
+  assistantState.value = 'replying';
+  scheduleAssistantStreamingScroll();
+
+  while (assistantStreamRender.activeMessageId === message.id && chars.length) {
+    await sleep(assistantTypewriterDelayMs);
+    message.displayContent = `${message.displayContent || ''}${chars.shift()}`;
+    updateAssistantStreamingSegments(message.displayContent);
+    scheduleAssistantStreamingScroll();
+  }
+
+  if (assistantStreamRender.activeMessageId !== message.id) {
+    const resolve = assistantStreamRender.resolveCompletion;
+    resetAssistantStreamRender();
+    resolve?.();
+    return;
+  }
+
+  message.content = finalContent;
+  message.displayContent = finalContent;
+  message.phase = 'done';
+  assistantState.value = 'idle';
   const resolve = assistantStreamRender.resolveCompletion;
   resetAssistantStreamRender();
   resolve?.();
@@ -1235,46 +1264,16 @@ function enqueueAssistantDelta(message, content) {
     assistantStreamRender.firstDeltaAt = Date.now();
   }
   assistantStreamRender.queue.push(...Array.from(String(content)));
-  if (!assistantStreamRender.started) {
-    if (assistantShouldStartStreaming()) {
-      startAssistantStreaming(message);
-    } else if (!assistantStreamStartTimer) {
-      assistantStreamStartTimer = setTimeout(() => {
-        if (assistantStreamRender.activeMessageId !== message.id || assistantStreamRender.started) return;
-        startAssistantStreaming(message);
-        void runAssistantRenderLoop(message);
-      }, 360);
-    }
-  }
-  void runAssistantRenderLoop(message);
 }
 
 async function finalizeAssistantRender(message, finalContent, receivedDelta) {
   ensureAssistantRenderTarget(message);
-  const normalizedFinalContent = finalContent || assistantMessageCopyContent(message) || '';
-  message.content = normalizedFinalContent;
-  const alreadyScheduledContent = `${assistantMessageDisplayContent(message)}${assistantStreamRender.queue.join('')}`;
-  let remainingChars = [];
-
-  if (normalizedFinalContent.startsWith(alreadyScheduledContent)) {
-    remainingChars = Array.from(normalizedFinalContent.slice(alreadyScheduledContent.length));
-  } else if (!receivedDelta) {
-    remainingChars = Array.from(normalizedFinalContent);
-  } else if (normalizedFinalContent.length > alreadyScheduledContent.length) {
-    remainingChars = Array.from(normalizedFinalContent.slice(alreadyScheduledContent.length));
-  }
-
-  if (remainingChars.length) {
-    assistantStreamRender.queue.push(...remainingChars);
-  }
+  const streamedContent = assistantStreamRender.queue.join('');
+  const normalizedFinalContent = finalContent || streamedContent || assistantMessageCopyContent(message) || '';
+  assistantStreamRender.queue = [];
   assistantStreamRender.finalContent = normalizedFinalContent;
   assistantStreamRender.completed = true;
-
-  if (!assistantStreamRender.started && assistantStreamRender.queue.length) {
-    startAssistantStreaming(message);
-  } else if (!receivedDelta && normalizedFinalContent) {
-    startAssistantStreaming(message);
-  }
+  assistantStreamRender.responseReady = true;
 
   void runAssistantRenderLoop(message);
   if (assistantStreamRender.completionPromise) {
@@ -1933,7 +1932,7 @@ function stopAssistantInteraction() {
 
 async function sendAssistantMessage({ content, templateKey, forceWebSearch } = {}) {
   const question = String(content || '').trim();
-  if (!question || assistantBusy.value) return;
+  if (!question || assistantChatLocked.value) return;
   if (assistantReadOnly.value) {
     showToast('共享历史只能查看，不能继续提问', 'error');
     return;
@@ -1971,6 +1970,7 @@ async function sendAssistantMessage({ content, templateKey, forceWebSearch } = {
   scrollAssistantChatToBottom();
   clearAssistantSleepTimer();
   resetAssistantStreamRender();
+  assistantRequestPending.value = true;
 
   try {
     await streamAssistantMessage({
@@ -1990,6 +1990,8 @@ async function sendAssistantMessage({ content, templateKey, forceWebSearch } = {
     } else {
       showToast(err instanceof ApiError ? err.message : 'AI 回复失败，请稍后重试', 'error');
     }
+  } finally {
+    assistantRequestPending.value = false;
   }
 }
 
@@ -2014,8 +2016,8 @@ function sendAssistantQuickQuestion(question) {
 
 async function openAssistantContext(contextType, id) {
   if (!isUserMode.value) return;
-  if (!id || assistantBusy.value) {
-    showToast(assistantBusy.value ? 'AI 正在回复中' : '条目信息无效', 'error');
+  if (!id || assistantChatLocked.value) {
+    showToast(assistantChatLocked.value ? '当前仍有对话在处理中' : '条目信息无效', 'error');
     return;
   }
 

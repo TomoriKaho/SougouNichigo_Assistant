@@ -4,6 +4,7 @@ function providerConfig() {
   return {
     provider: getEnv('AI_PROVIDER'),
     model: getEnv('AI_MODEL'),
+    temperature: Number(getEnv('AI_TEMPERATURE', '0.7')),
     apiKey: getEnv('AI_API_KEY', ''),
     baseUrl: getEnv('AI_BASE_URL'),
     assignedSites: getEnv('AI_SEARCH_ASSIGNED_SITES', '')
@@ -67,7 +68,8 @@ function chatRequestBody({ messages, enableSearch = false, forcedSearch = false,
   const body = {
     model: config.model,
     messages,
-    stream
+    stream,
+    temperature: Number.isFinite(config.temperature) ? config.temperature : 0.7
   }
 
   if (enableSearch) {

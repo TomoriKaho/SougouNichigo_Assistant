@@ -795,6 +795,15 @@ button.ghost:hover {
   gap: 12px;
 }
 
+.assistant-chat-disclaimer {
+  flex: 0 0 auto;
+  padding: 6px 18px 2px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .assistant-message {
   display: flex;
 }
@@ -881,8 +890,31 @@ button.ghost:hover {
 }
 
 .assistant-thinking-text {
+  display: inline-block;
   color: var(--muted);
   font-weight: 700;
+  animation: assistant-thinking-breathe 1.8s ease-in-out infinite;
+  transform-origin: center;
+  will-change: opacity, transform;
+}
+
+@keyframes assistant-thinking-breathe {
+  0%,
+  100% {
+    opacity: 0.52;
+    transform: scale(0.985);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-thinking-text {
+    animation: none;
+  }
 }
 
 .assistant-message-markdown {
@@ -2479,6 +2511,20 @@ button.assignment-return-button:hover {
   grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
   align-items: center;
   gap: 12px;
+}
+
+.study-page-floating-note {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  z-index: 1;
+  pointer-events: none;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .study-footer-total {
