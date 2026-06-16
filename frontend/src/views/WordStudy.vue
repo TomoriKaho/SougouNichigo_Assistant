@@ -120,9 +120,6 @@
               </p>
               <p
                 class="lexicon-entry-translation"
-                :class="{
-                  'word-study-text-has-meta': hasWordStudyMeta(item)
-                }"
               >
                 <span
                   class="word-study-line-mask-target word-study-maskable"

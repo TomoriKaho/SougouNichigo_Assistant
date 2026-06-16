@@ -570,6 +570,12 @@ router.get('/texts', authMiddleware, (req, res) => {
   }))
 })
 
+router.get('/texts/:id/study', authMiddleware, (req, res) => {
+  const result = Text.studyById(req.params.id, req.user.id)
+  if (!result) return res.status(404).json({ error: '课文条目不存在' })
+  res.json(result)
+})
+
 router.get('/classes', authMiddleware, (req, res) => {
   res.json(Classroom.listForUser({
     userId: req.user.id,

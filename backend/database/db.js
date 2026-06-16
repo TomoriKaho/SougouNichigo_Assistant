@@ -333,10 +333,7 @@ function initVocabularyDatabase() {
   vocabularyDb.exec('CREATE INDEX IF NOT EXISTS idx_vocab_favorites_user ON vocabulary_favorites(user_id)')
   vocabularyDb.exec('CREATE INDEX IF NOT EXISTS idx_vocab_favorites_entry ON vocabulary_favorites(vocabulary_id)')
 
-  const total = vocabularyDb.prepare('SELECT COUNT(*) AS total FROM vocabulary_entries').get().total
-  if (!dbExisted.vocabulary || total === 0) {
-    seedVocabularyFromJson(vocabularyDb)
-  }
+  seedVocabularyFromJson(vocabularyDb)
 
   const rows = vocabularyDb.prepare(`
     SELECT id, term, supplement, part_of_speech, explanation
@@ -486,10 +483,7 @@ function initTextDatabase() {
   textDb.exec('CREATE INDEX IF NOT EXISTS idx_text_entries_textbook ON text_entries(textbook_id)')
   textDb.exec('CREATE INDEX IF NOT EXISTS idx_text_entries_lesson_unit ON text_entries(lesson_number, unit_number)')
 
-  const total = textDb.prepare('SELECT COUNT(*) AS total FROM text_entries').get().total
-  if (!dbExisted.text || total === 0) {
-    seedTextFromJson(textDb)
-  }
+  seedTextFromJson(textDb)
 }
 
 function initReadingMaterialsDatabase() {

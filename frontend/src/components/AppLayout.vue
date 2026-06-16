@@ -36,6 +36,14 @@
     <div class="main">
       <header class="topbar">
         <div class="topbar-left">
+          <button
+            v-if="topbarBackLabel"
+            class="ghost topbar-back-button"
+            type="button"
+            @click="handleTopbarBackClick"
+          >
+            {{ topbarBackLabel }}
+          </button>
           <h1>{{ title }}</h1>
           <div class="topbar-left-actions"></div>
         </div>
@@ -419,6 +427,8 @@ const feedbackForm = reactive({
 const toast = reactive({ visible: false, message: '', type: 'info' });
 const assistantHover = ref(false);
 const assistantOpen = ref(false);
+const topbarTitleOverride = ref('');
+const topbarBackLabel = ref('');
 const assistantInput = ref('');
 const assistantState = ref('idle');
 const assistantSleepy = ref(false);
@@ -524,6 +534,7 @@ const titles = {
 
 const user = computed(() => state.user);
 const title = computed(() => {
+  if (topbarTitleOverride.value) return topbarTitleOverride.value;
   if (route.name === 'Dashboard' && !isPrivileged.value) return '首页';
   return titles[route.name] || '総日ナビ';
 });
@@ -1406,6 +1417,15 @@ function closeFeedback() {
   feedbackError.value = '';
 }
 
+function handleTopbarTitleOverride(event) {
+  topbarTitleOverride.value = String(event.detail?.title || '').trim();
+  topbarBackLabel.value = String(event.detail?.backLabel || '').trim();
+}
+
+function handleTopbarBackClick() {
+  window.dispatchEvent(new CustomEvent('topbar:back'));
+}
+
 function toggleSidebar() {
   const previousContentLeft = contentRef.value?.getBoundingClientRect?.().left || 0;
   sidebarCollapsed.value = !sidebarCollapsed.value;
@@ -2119,6 +2139,7 @@ onMounted(() => {
   window.addEventListener('assistant:context', handleAssistantContextEvent);
   window.addEventListener('assistant:open-conversation', handleAssistantOpenConversationEvent);
   window.addEventListener('assistant:docking-changed', handleAssistantDockingChange);
+  window.addEventListener('topbar:title-override', handleTopbarTitleOverride);
 });
 
 watch(showAssistantOrb, (visible) => {
@@ -2165,5 +2186,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('assistant:context', handleAssistantContextEvent);
   window.removeEventListener('assistant:open-conversation', handleAssistantOpenConversationEvent);
   window.removeEventListener('assistant:docking-changed', handleAssistantDockingChange);
+  window.removeEventListener('topbar:title-override', handleTopbarTitleOverride);
 });
 </script>

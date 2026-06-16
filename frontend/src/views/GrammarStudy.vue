@@ -157,13 +157,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { apiRequest, ApiError } from '../utils/apiClient';
 import { useAuth } from '../composables/useAuth';
 
 const { logout } = useAuth();
 const router = useRouter();
+const route = useRoute();
 
 const rows = ref([]);
 const total = ref(0);
@@ -180,6 +181,8 @@ const detailLoadingIds = ref(new Set());
 const detailById = reactive({});
 const detailErrors = reactive({});
 const toast = reactive({ visible: false, message: '', type: 'info' });
+const focusGrammarId = ref(0);
+const applyingRouteFocus = ref(false);
 
 const filters = reactive({
   textbookId: 0,
@@ -248,12 +251,40 @@ async function refresh() {
     rows.value = data.rows || [];
     total.value = data.total || 0;
     pageJump.value = page.value;
+    await expandFocusedGrammar();
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '加载失败';
     handleApiError(err);
   } finally {
     loading.value = false;
   }
+}
+
+async function applyRouteFocus() {
+  const focus = Number(route.query.focus || 0);
+  const textbookId = Number(route.query.textbookId || 0);
+  const lessonId = Number(route.query.lessonId || 0);
+  const unitId = Number(route.query.unitId || 0);
+
+  if (!focus) return;
+  applyingRouteFocus.value = true;
+  focusGrammarId.value = focus;
+  if (textbookId) filters.textbookId = textbookId;
+  if (lessonId) filters.lessonScope = lessonId;
+  if (unitId) filters.unitId = unitId;
+  idOrder.value = 'asc';
+  page.value = 1;
+  await nextTick();
+  applyingRouteFocus.value = false;
+}
+
+async function expandFocusedGrammar() {
+  const id = Number(focusGrammarId.value || 0);
+  if (!id || !rows.value.some((item) => Number(item.id) === id)) return;
+  const nextIds = new Set(expandedIds.value);
+  nextIds.add(id);
+  expandedIds.value = nextIds;
+  await loadDetail(id);
 }
 
 function changePage(nextPage) {
@@ -352,6 +383,7 @@ function openGrammarAssistant(item) {
 }
 
 watch(() => filters.textbookId, () => {
+  if (applyingRouteFocus.value) return;
   filters.lessonScope = 'all';
   filters.unitId = 0;
   page.value = 1;
@@ -359,6 +391,7 @@ watch(() => filters.textbookId, () => {
 });
 
 watch(() => filters.lessonScope, () => {
+  if (applyingRouteFocus.value) return;
   filters.unitId = 0;
   page.value = 1;
   refresh();
@@ -377,6 +410,7 @@ watch(() => filters.favoritesOnly, () => {
 onMounted(async () => {
   try {
     await loadOptions();
+    await applyRouteFocus();
     await refresh();
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '加载失败';

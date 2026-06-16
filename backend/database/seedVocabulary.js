@@ -3,7 +3,18 @@ const path = require('path')
 const { deriveVocabularyFlags } = require('../lib/vocabularyFlags')
 
 const DEFAULT_TEXTBOOK_NAME = '综合日语 第四册'
-const VOCABULARY_JSON = path.resolve(__dirname, '..', '..', 'data', 'Vocabulary_4.json')
+const VOCABULARY_SOURCES = [
+  {
+    fileName: 'vocabulary_4.json',
+    textbookName: DEFAULT_TEXTBOOK_NAME,
+    orderIndex: 1
+  },
+  {
+    fileName: 'vocabulary_2.json',
+    textbookName: '综合日语 第二册',
+    orderIndex: 2
+  }
+]
 
 function normalizeText(value) {
   if (value === null || value === undefined) return null
@@ -17,14 +28,14 @@ function normalizeTableType(label) {
   return 'new'
 }
 
-function ensureTextbook(db, name) {
+function ensureTextbook(db, name, orderIndex = 1) {
   const existing = db.prepare('SELECT id FROM textbooks WHERE name = ?').get(name)
   if (existing) return existing.id
 
   return db.prepare(`
     INSERT INTO textbooks (name, order_index, created_at, updated_at)
-    VALUES (?, 1, datetime('now', 'localtime'), datetime('now', 'localtime'))
-  `).run(name).lastInsertRowid
+    VALUES (?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
+  `).run(name, orderIndex).lastInsertRowid
 }
 
 function ensureLesson(db, textbookId, lessonNumber, title) {
@@ -51,15 +62,25 @@ function ensureUnit(db, lessonId, unitNumber, name) {
   `).run(lessonId, unitNumber, name).lastInsertRowid
 }
 
-function seedVocabularyFromJson(db) {
-  if (!fs.existsSync(VOCABULARY_JSON)) {
-    console.log(`   ⚠ 未找到 ${VOCABULARY_JSON}，跳过词库初始化`)
+function seedVocabularySource(db, source) {
+  const sourcePath = path.resolve(__dirname, '..', '..', 'data', source.fileName)
+  if (!fs.existsSync(sourcePath)) {
+    console.log(`   ⚠ 未找到 ${sourcePath}，跳过词库初始化`)
     return { imported: 0, skipped: true }
   }
 
-  const raw = JSON.parse(fs.readFileSync(VOCABULARY_JSON, 'utf8'))
+  const raw = JSON.parse(fs.readFileSync(sourcePath, 'utf8'))
   if (!Array.isArray(raw)) {
-    throw new Error('Vocabulary_4.json 顶层必须是数组')
+    throw new Error(`${source.fileName} 顶层必须是数组`)
+  }
+
+  const textbookId = ensureTextbook(db, source.textbookName, source.orderIndex)
+  const existingCount = db
+    .prepare('SELECT COUNT(*) AS total FROM vocabulary_entries WHERE textbook_id = ?')
+    .get(textbookId).total
+  if (existingCount > 0) {
+    console.log(`   • ${source.textbookName} 词库已存在 ${existingCount} 条，跳过 ${source.fileName}`)
+    return { imported: 0, skipped: true }
   }
 
   const insertEntry = db.prepare(`
@@ -88,8 +109,6 @@ function seedVocabularyFromJson(db) {
 
   let imported = 0
   const run = db.transaction(() => {
-    const textbookId = ensureTextbook(db, DEFAULT_TEXTBOOK_NAME)
-
     raw.forEach((lesson) => {
       const lessonNumber = Number(lesson['课序'] || 0) || 0
       const lessonTitle = normalizeText(lesson['课名']) || `第${lessonNumber}课`
@@ -147,11 +166,24 @@ function seedVocabularyFromJson(db) {
   })
 
   run()
-  console.log(`   ✓ 已从 Vocabulary_4.json 导入 ${imported} 个词条`)
+  console.log(`   ✓ 已从 ${source.fileName} 导入 ${imported} 个词条`)
   return { imported, skipped: false }
+}
+
+function seedVocabularyFromJson(db) {
+  return VOCABULARY_SOURCES.reduce(
+    (summary, source) => {
+      const result = seedVocabularySource(db, source)
+      summary.imported += result.imported
+      summary.skipped = summary.skipped && result.skipped
+      return summary
+    },
+    { imported: 0, skipped: true }
+  )
 }
 
 module.exports = {
   DEFAULT_TEXTBOOK_NAME,
+  VOCABULARY_SOURCES,
   seedVocabularyFromJson
 }
