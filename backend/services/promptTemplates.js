@@ -49,7 +49,11 @@ const TASK_PROMPTS = {
 请先说明当前教材中的用法，再说明可能存在的其他用法或相近表达，并区分适用场景。
 `.trim(),
   translation_review: '现在请你执行【翻译评价与纠错】任务。评价准确性、自然度、语法、语气风格和信息完整性。',
-  article_explain: '现在请你执行【日语文章精读讲解】任务。文章提问入口暂未开放；如用户提供文章，请按段落和重点句讲解。'
+  article_explain: '现在请你执行【日语文章精读讲解】任务。文章提问入口暂未开放；如用户提供文章，请按段落和重点句讲解。',
+  article_selection_qa: `
+现在请你执行【课文选区提问】任务。
+用户正在针对课文中的选中部分提问。回答必须优先围绕选中文本，但判断指代、省略、语气、翻译、文法和上下文关系时，要参考整篇课文。不要只孤立解释选区；如果问题需要全文信息，请明确引用相关上下文进行说明。
+`.trim()
 }
 
 function clean(value) {
@@ -90,10 +94,26 @@ ${examples}
 `.trim()
 }
 
+function formatTextSelectionContext(snapshot = {}) {
+  return `
+【当前课文上下文】
+- 教材：${clean(snapshot.textbook_name)}
+- 课：第${clean(snapshot.lesson_number)}课
+- 单元：第${clean(snapshot.unit_number)}单元
+- 标题：${clean(snapshot.title)}
+- 选中文本：
+${clean(snapshot.selected_text)}
+
+【课文全文】
+${clean(snapshot.content)}
+`.trim()
+}
+
 function formatContext(conversation = {}) {
   const snapshot = conversation.context_snapshot || {}
   if (conversation.context_type === 'vocabulary') return formatVocabularyContext(snapshot)
   if (conversation.context_type === 'grammar') return formatGrammarContext(snapshot)
+  if (conversation.context_type === 'text') return formatTextSelectionContext(snapshot)
   return '【当前上下文】无特定条目。'
 }
 

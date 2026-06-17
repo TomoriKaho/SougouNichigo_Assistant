@@ -1,5 +1,6 @@
 const { AssistantConversation } = require('../models/AssistantConversation')
 const { Grammar } = require('../models/Grammar')
+const { TextNote } = require('../models/TextNote')
 const { Vocabulary } = require('../models/Vocabulary')
 const { completeChat, streamChat } = require('./aiProvider')
 const { buildMessages, shouldEnableSearch, suggestedQuestions } = require('./promptTemplates')
@@ -23,6 +24,10 @@ function initialMessageFor(conversation) {
     return `关于文法 **「${conversation.context_label || '这个文法'}」**，你想问些什么？`
   }
   if (conversation.context_type === 'text') {
+    const snapshot = conversation.context_snapshot || {}
+    if (snapshot.selected_text) {
+      return '关于选中的这段文字，你想问些什么？'
+    }
     return `关于文章 **「${conversation.context_label || '这篇文章'}」**，你想问些什么？`
   }
   return '你好呀，我是你的AI日语助手阿酱。你可以向我提问任何日语相关的问题，我会为你详细解释。'
@@ -109,6 +114,32 @@ function createGrammarConversation(userId, id) {
     contextSnapshot: item,
     templateKey: 'grammar_explain',
     visibility: 'context_shared'
+  }, userId)
+}
+
+function createTextSelectionConversation(userId, id, payload = {}) {
+  const result = TextNote.validateSelectionForText(id, payload)
+  if (!result) return null
+
+  const { item, selection } = result
+  return createConversationWithInitialMessage({
+    userId,
+    contextType: 'text',
+    contextId: item.id,
+    contextLabel: item.title,
+    contextSnapshot: {
+      id: item.id,
+      textbook_name: item.textbook_name,
+      lesson_number: item.lesson_number,
+      unit_number: item.unit_number,
+      title: item.title,
+      content: item.content,
+      selected_text: selection.selectedText,
+      start_offset: selection.startOffset,
+      end_offset: selection.endOffset
+    },
+    templateKey: 'article_selection_qa',
+    visibility: 'private'
   }, userId)
 }
 
@@ -239,6 +270,7 @@ module.exports = {
   createFreeConversation,
   createVocabularyConversation,
   createGrammarConversation,
+  createTextSelectionConversation,
   deleteConversation,
   getConversation,
   listConversations,

@@ -11,6 +11,15 @@ function mapEntry(row) {
   return row
 }
 
+function parseExamples(value) {
+  try {
+    const examples = JSON.parse(value || '[]')
+    return Array.isArray(examples) ? examples : []
+  } catch (error) {
+    return []
+  }
+}
+
 class Text {
   static options() {
     const textbooks = textDb.prepare(`
@@ -122,6 +131,7 @@ class Text {
         g.translation,
         g.formation,
         g.notes,
+        g.examples_json,
         CASE WHEN gf.id IS NULL THEN 0 ELSE 1 END AS is_favorite,
         t.name AS textbook_name,
         l.lesson_number,
@@ -144,7 +154,8 @@ class Text {
       Number(item.unit_number || 0)
     ).map((row) => ({
       ...row,
-      is_favorite: !!row.is_favorite
+      is_favorite: !!row.is_favorite,
+      examples: parseExamples(row.examples_json)
     }))
 
     return {

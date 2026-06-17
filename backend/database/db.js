@@ -244,6 +244,24 @@ function initUserDatabase() {
   userDb.exec('CREATE INDEX IF NOT EXISTS idx_assistant_conversations_context ON assistant_conversations(context_type, context_id)')
   userDb.exec('CREATE INDEX IF NOT EXISTS idx_assistant_conversations_updated ON assistant_conversations(updated_at)')
   userDb.exec('CREATE INDEX IF NOT EXISTS idx_assistant_messages_conversation ON assistant_messages(conversation_id)')
+
+  userDb.exec(`
+    CREATE TABLE IF NOT EXISTS text_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      text_id INTEGER NOT NULL,
+      start_offset INTEGER NOT NULL,
+      end_offset INTEGER NOT NULL,
+      selected_text TEXT NOT NULL,
+      note_content TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `)
+
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_text_notes_user_text ON text_notes(user_id, text_id)')
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_text_notes_offsets ON text_notes(text_id, start_offset, end_offset)')
 }
 
 function initVocabularyDatabase() {

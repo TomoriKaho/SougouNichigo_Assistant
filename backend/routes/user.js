@@ -6,6 +6,7 @@ const { ReadingMaterial } = require('../models/ReadingMaterial')
 const { Assignment } = require('../models/Assignment')
 const { Grammar } = require('../models/Grammar')
 const { Text } = require('../models/Text')
+const { TextNote } = require('../models/TextNote')
 const { Vocabulary } = require('../models/Vocabulary')
 const { Classroom } = require('../models/Classroom')
 const { authMiddleware, signUserToken, USER_JWT_EXPIRES_IN } = require('../middleware/auth')
@@ -106,6 +107,10 @@ function writeSse(res, event, data) {
   res.write(`event: ${event}\n`)
   res.write(`data: ${JSON.stringify(data)}\n\n`)
   res.flush?.()
+}
+
+function routeError(res, error, fallback = '操作失败') {
+  return res.status(error?.status || 500).json({ error: error?.message || fallback })
 }
 
 function publicReadingMaterial(row) {
@@ -481,6 +486,16 @@ router.post('/assistant/context/grammar/:id', authMiddleware, (req, res) => {
   res.status(201).json(result)
 })
 
+router.post('/assistant/context/text/:id/selection', authMiddleware, (req, res) => {
+  try {
+    const result = assistantService.createTextSelectionConversation(req.user.id, req.params.id, req.body)
+    if (!result) return res.status(404).json({ error: '课文条目不存在' })
+    res.status(201).json(result)
+  } catch (error) {
+    routeError(res, error, '打开课文提问失败')
+  }
+})
+
 router.get('/grammar/options', authMiddleware, (req, res) => {
   res.json(Grammar.options())
 })
@@ -574,6 +589,37 @@ router.get('/texts/:id/study', authMiddleware, (req, res) => {
   const result = Text.studyById(req.params.id, req.user.id)
   if (!result) return res.status(404).json({ error: '课文条目不存在' })
   res.json(result)
+})
+
+router.get('/texts/:id/notes', authMiddleware, (req, res) => {
+  const item = Text.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '课文条目不存在' })
+  res.json({ rows: TextNote.listForText(req.user.id, req.params.id) })
+})
+
+router.post('/texts/:id/notes', authMiddleware, (req, res) => {
+  try {
+    const item = TextNote.create(req.user.id, req.params.id, req.body)
+    res.status(201).json({ success: true, item })
+  } catch (error) {
+    routeError(res, error, '保存笔记失败')
+  }
+})
+
+router.patch('/text-notes/:id', authMiddleware, (req, res) => {
+  try {
+    const item = TextNote.update(req.user.id, req.params.id, req.body)
+    if (!item) return res.status(404).json({ error: '笔记不存在' })
+    res.json({ success: true, item })
+  } catch (error) {
+    routeError(res, error, '更新笔记失败')
+  }
+})
+
+router.delete('/text-notes/:id', authMiddleware, (req, res) => {
+  const deleted = TextNote.delete(req.user.id, req.params.id)
+  if (!deleted) return res.status(404).json({ error: '笔记不存在' })
+  res.json({ success: true })
 })
 
 router.get('/classes', authMiddleware, (req, res) => {

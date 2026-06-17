@@ -92,26 +92,6 @@
     <div v-if="toast.visible" class="toast" :class="toast.type">{{ toast.message }}</div>
   </section>
   <section v-else class="card course-reading-page">
-    <div class="course-reading-toolbar is-hidden">
-      <label>
-        单词
-        <select v-model="markerFilters.words">
-          <option value="all">全部</option>
-          <option value="key">重点</option>
-          <option value="favorite">收藏</option>
-          <option value="none">不选</option>
-        </select>
-      </label>
-      <label>
-        语法
-        <select v-model="markerFilters.grammar">
-          <option value="all">全部</option>
-          <option value="favorite">收藏</option>
-          <option value="none">不选</option>
-        </select>
-      </label>
-    </div>
-
     <div class="course-reading-layout">
       <div class="course-reading-body">
         <div v-if="studyLoading" class="loading">加载中...</div>
@@ -119,25 +99,135 @@
           <p class="error">{{ studyError }}</p>
           <button class="ghost" @click="reloadStudy">重试</button>
         </div>
-        <article v-else class="course-reading-content" @mouseleave="scheduleHidePopover">
+        <article
+          v-else
+          class="course-reading-content"
+          @mouseleave="scheduleHidePopover"
+          @mouseup="handleReadingSelection"
+          @keyup="handleReadingSelection"
+        >
           <h1 class="course-reading-article-title">{{ studyEntry.title }}</h1>
-          <div class="course-reading-text">
-            <template v-for="(segment, index) in annotatedSegments" :key="`${index}-${segment.text}`">
-              <span v-if="segment.type === 'text'">{{ segment.text }}</span>
+          <div ref="readingTextRef" class="course-reading-text">
+            <template v-for="segment in displaySegments" :key="segmentKey(segment)">
+              <span
+                v-if="segment.type === 'text'"
+                class="course-text-segment"
+                :class="noteSegmentClass(segment)"
+                :data-start="segment.start"
+                :data-end="segment.end"
+                :data-note-ids="segment.noteIds.join(' ')"
+                @click="handleNoteSegmentClick(segment)"
+              >{{ segment.text }}</span>
               <span
                 v-else
                 class="course-annotation"
-                :class="segment.type === 'grammar' ? 'is-grammar' : 'is-vocabulary'"
+                :class="[
+                  segment.type === 'grammar' ? 'is-grammar' : 'is-vocabulary',
+                  ...noteSegmentClass(segment)
+                ]"
+                :data-start="segment.start"
+                :data-end="segment.end"
+                :data-note-ids="segment.noteIds.join(' ')"
                 @mouseenter="showPopover($event, segment)"
                 @mouseover="showPopover($event, segment)"
-                @click.stop="showPopover($event, segment)"
+                @click.stop="handleAnnotatedSegmentClick($event, segment)"
                 @mouseleave="scheduleHidePopover"
               >{{ segment.text }}</span>
             </template>
           </div>
         </article>
       </div>
-      <aside class="course-reading-tool-window" aria-hidden="true"></aside>
+      <aside class="course-reading-tool-window">
+        <section class="course-tool-section">
+          <div class="course-tool-section-header">
+            <h2>选择工具</h2>
+            <button
+              class="course-selection-toggle"
+              :class="{ active: selectionMode }"
+              type="button"
+              @click="toggleSelectionMode"
+            >
+              {{ selectionMode ? '已开启' : '开启' }}
+            </button>
+          </div>
+          <p class="course-tool-hint">{{ selectionMode ? '选中课文中的文字后，可以提问或添加笔记。' : '开启后再选择课文文字。' }}</p>
+          <div v-if="currentSelection" class="course-selection-card">
+            <p>{{ selectionPreview }}</p>
+            <div class="course-selection-actions">
+              <button type="button" :disabled="assistantOpening" @click="askAboutSelection">提问</button>
+              <button class="ghost" type="button" @click="startNoteForSelection">笔记</button>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="noteEditor.open" class="course-tool-section course-note-editor">
+          <div class="course-tool-section-header">
+            <h2>{{ noteEditor.mode === 'edit' ? '编辑笔记' : '新建笔记' }}</h2>
+            <button class="ghost" type="button" @click="closeNoteEditor">关闭</button>
+          </div>
+          <p class="course-note-selected">{{ noteEditor.selectedText }}</p>
+          <textarea v-model="noteEditor.content" rows="5" placeholder="输入笔记内容"></textarea>
+          <div class="course-note-editor-actions">
+            <button type="button" :disabled="noteSaving" @click="saveNote">{{ noteSaving ? '保存中...' : '保存' }}</button>
+            <button
+              v-if="noteEditor.mode === 'edit'"
+              class="ghost danger"
+              type="button"
+              :disabled="noteSaving"
+              @click="deleteActiveNote"
+            >
+              删除
+            </button>
+          </div>
+        </section>
+
+        <section class="course-tool-section">
+          <div class="course-tool-section-header">
+            <h2>笔记</h2>
+            <span class="course-tool-count">{{ notes.length }}</span>
+          </div>
+          <div v-if="notesLoading" class="course-tool-empty">加载中...</div>
+          <div v-else-if="notes.length" class="course-note-list">
+            <button
+              v-for="note in notes"
+              :key="note.id"
+              class="course-note-list-item"
+              :class="{ active: Number(activeNoteId) === Number(note.id) }"
+              type="button"
+              @click="focusNote(note)"
+            >
+              <strong>{{ note.selected_text }}</strong>
+              <span>{{ note.note_content }}</span>
+            </button>
+          </div>
+          <div v-else class="course-tool-empty">暂无笔记</div>
+        </section>
+
+        <section class="course-tool-section">
+          <div class="course-tool-section-header">
+            <h2>标记过滤</h2>
+          </div>
+          <div class="course-reading-toolbar">
+            <label>
+              单词
+              <select v-model="markerFilters.words">
+                <option value="all">全部</option>
+                <option value="key">重点</option>
+                <option value="favorite">收藏</option>
+                <option value="none">不选</option>
+              </select>
+            </label>
+            <label>
+              语法
+              <select v-model="markerFilters.grammar">
+                <option value="all">全部</option>
+                <option value="favorite">收藏</option>
+                <option value="none">不选</option>
+              </select>
+            </label>
+          </div>
+        </section>
+      </aside>
     </div>
 
     <div
@@ -149,10 +239,51 @@
       @mouseleave="scheduleHidePopover"
     >
       <template v-if="activePopover.type === 'vocabulary'">
-        <div class="course-popover-header">
-          <h3>{{ activePopover.item.term }}</h3>
+        <div class="course-popover-header course-vocabulary-popover-header">
+          <h3
+            class="course-vocabulary-popover-term"
+            :class="{ 'is-non-key-word': !activePopover.item.is_key_word }"
+          >
+            {{ activePopover.item.term }}
+          </h3>
+          <div v-if="activePopover.item.accent" class="course-vocabulary-popover-side">
+            <span v-if="activePopover.item.accent" class="course-vocabulary-popover-accent">
+              {{ activePopover.item.accent }}
+            </span>
+          </div>
+        </div>
+        <div
+          v-if="activePopover.item.supplement || activePopover.item.part_of_speech || metadataTags(activePopover.item).length"
+          class="course-vocabulary-popover-meta-row"
+          :class="{ 'has-tags': metadataTags(activePopover.item).length }"
+        >
+          <div class="course-vocabulary-popover-meta-left">
+            <p v-if="activePopover.item.supplement" class="course-popover-subtitle">({{ activePopover.item.supplement }})</p>
+            <p v-if="activePopover.item.part_of_speech" class="course-popover-meta">&lt;{{ activePopover.item.part_of_speech }}&gt;</p>
+          </div>
+          <div v-if="metadataTags(activePopover.item).length" class="lexicon-entry-tag-row course-vocabulary-popover-tags">
+            <span
+              v-for="tag in metadataTags(activePopover.item)"
+              :key="tag.key"
+              class="lexicon-entry-tag"
+              :class="tag.className"
+            >
+              {{ tag.label }}
+            </span>
+          </div>
+        </div>
+        <p class="course-popover-main">{{ activePopover.item.explanation || '-' }}</p>
+        <button
+          class="word-study-question-button course-popover-question-button"
+          type="button"
+          aria-label="提问"
+          @click="openVocabularyAssistant(activePopover.item)"
+        >
+          ?
+        </button>
+        <div class="lexicon-entry-actions word-study-entry-actions course-popover-entry-actions">
           <button
-            class="word-study-favorite-button course-popover-icon-button"
+            class="word-study-favorite-button"
             :class="{ 'is-favorite': activePopover.item.is_favorite }"
             type="button"
             :aria-label="activePopover.item.is_favorite ? '取消收藏单词' : '收藏单词'"
@@ -161,30 +292,53 @@
             {{ activePopover.item.is_favorite ? '★' : '☆' }}
           </button>
         </div>
-        <p v-if="activePopover.item.supplement" class="course-popover-subtitle">({{ activePopover.item.supplement }})</p>
-        <p v-if="activePopover.item.accent" class="course-popover-meta">{{ activePopover.item.accent }}</p>
-        <p v-if="activePopover.item.part_of_speech" class="course-popover-meta">&lt;{{ activePopover.item.part_of_speech }}&gt;</p>
-        <p class="course-popover-main">{{ activePopover.item.explanation || '-' }}</p>
-        <div v-if="metadataTags(activePopover.item).length" class="lexicon-entry-tag-row">
-          <span
-            v-for="tag in metadataTags(activePopover.item)"
-            :key="tag.key"
-            class="lexicon-entry-tag"
-            :class="tag.className"
-          >
-            {{ tag.label }}
-          </span>
-        </div>
-        <div class="course-popover-actions">
-          <button class="ghost" @click="openVocabularyAssistant(activePopover.item)">提问</button>
-        </div>
       </template>
 
       <template v-else>
         <div class="course-popover-header">
           <h3>{{ grammarDisplay(activePopover.item) }}</h3>
+        </div>
+        <dl class="course-grammar-popover-fields">
+          <div>
+            <dt>意义</dt>
+            <dd>{{ activePopover.item.meaning || '-' }}</dd>
+          </div>
+          <div>
+            <dt>译文</dt>
+            <dd>{{ activePopover.item.translation || '-' }}</dd>
+          </div>
+          <div>
+            <dt>接续</dt>
+            <dd>{{ activePopover.item.formation || '-' }}</dd>
+          </div>
+          <div class="course-grammar-popover-example-row">
+            <dt>例句</dt>
+            <dd>
+              <div class="course-grammar-popover-examples">
+                <template v-if="grammarExamples(activePopover.item).length">
+                  <p
+                    v-for="(example, index) in grammarExamples(activePopover.item)"
+                    :key="`${activePopover.item.id}-example-${index}`"
+                  >
+                    {{ index + 1 }}. {{ example }}
+                  </p>
+                </template>
+                <template v-else>-</template>
+              </div>
+            </dd>
+          </div>
+        </dl>
+        <button
+          class="word-study-question-button course-popover-question-button"
+          type="button"
+          aria-label="提问"
+          @click="openGrammarAssistant(activePopover.item)"
+        >
+          ?
+        </button>
+        <div class="lexicon-entry-actions word-study-entry-actions course-popover-entry-actions">
           <button
-            class="grammar-favorite-button course-popover-icon-button"
+            class="grammar-favorite-button word-study-favorite-button"
             :class="{ 'is-favorite': activePopover.item.is_favorite }"
             type="button"
             :aria-label="activePopover.item.is_favorite ? '取消收藏文法' : '收藏文法'"
@@ -192,25 +346,6 @@
           >
             {{ activePopover.item.is_favorite ? '★' : '☆' }}
           </button>
-        </div>
-        <p class="course-popover-main">{{ activePopover.item.meaning || '-' }}</p>
-        <dl class="course-grammar-popover-fields">
-          <div>
-            <dt>译文</dt>
-            <dd>{{ activePopover.item.translation || '-' }}</dd>
-          </div>
-          <div>
-            <dt>意义</dt>
-            <dd>{{ activePopover.item.meaning || '-' }}</dd>
-          </div>
-          <div>
-            <dt>接续</dt>
-            <dd>{{ activePopover.item.formation || '-' }}</dd>
-          </div>
-        </dl>
-        <div class="course-popover-actions">
-          <button class="ghost" @click="openGrammarAssistant(activePopover.item)">提问</button>
-          <button @click="jumpToGrammar(activePopover.item)">跳转</button>
         </div>
       </template>
     </div>
@@ -221,7 +356,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { apiRequest, ApiError } from '../utils/apiClient';
 import { useAuth } from '../composables/useAuth';
@@ -244,9 +379,27 @@ const studyGrammar = ref([]);
 const studyLoading = ref(false);
 const studyError = ref('');
 const activePopover = ref(null);
+const readingTextRef = ref(null);
+const notes = ref([]);
+const notesLoading = ref(false);
+const selectionMode = ref(false);
+const currentSelection = ref(null);
+const activeNoteId = ref(null);
+const noteSaving = ref(false);
+const assistantOpening = ref(false);
 const popoverPosition = reactive({ x: 0, y: 0 });
 const toast = reactive({ visible: false, message: '', type: 'info' });
 let hidePopoverTimer = 0;
+
+const noteEditor = reactive({
+  open: false,
+  mode: 'create',
+  noteId: null,
+  startOffset: 0,
+  endOffset: 0,
+  selectedText: '',
+  content: ''
+});
 
 const filters = reactive({
   textbookId: 0
@@ -319,6 +472,12 @@ const markerPatterns = computed(() => {
 });
 
 const annotatedSegments = computed(() => annotateText(studyEntry.value?.content || '', markerPatterns.value));
+const displaySegments = computed(() => splitSegmentsByNotes(annotatedSegments.value, notes.value));
+const selectionPreview = computed(() => {
+  const text = String(currentSelection.value?.selectedText || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  return text.length > 120 ? `${text.slice(0, 120)}...` : text;
+});
 
 function showToast(message, type = 'info') {
   toast.message = message;
@@ -400,7 +559,8 @@ function grammarPatterns(item) {
 }
 
 function annotateText(text, patterns) {
-  if (!text || !patterns.length) return [{ type: 'text', text: text || '' }];
+  if (!text) return [];
+  if (!patterns.length) return [{ type: 'text', text, start: 0, end: text.length, noteIds: [] }];
   const segments = [];
   let index = 0;
 
@@ -410,7 +570,10 @@ function annotateText(text, patterns) {
       segments.push({
         type: match.type,
         text: match.text,
-        item: match.item
+        item: match.item,
+        start: index,
+        end: index + match.text.length,
+        noteIds: []
       });
       index += match.text.length;
       continue;
@@ -421,10 +584,80 @@ function annotateText(text, patterns) {
     while (index < text.length && !findMatchingPattern(text, patterns, index)) {
       index += 1;
     }
-    segments.push({ type: 'text', text: text.slice(start, index) });
+    segments.push({
+      type: 'text',
+      text: text.slice(start, index),
+      start,
+      end: index,
+      noteIds: []
+    });
   }
 
   return segments;
+}
+
+function splitSegmentsByNotes(segments, noteRows) {
+  const validNotes = noteRows
+    .map((note) => ({
+      ...note,
+      start_offset: Number(note.start_offset),
+      end_offset: Number(note.end_offset)
+    }))
+    .filter((note) => Number.isFinite(note.start_offset) && Number.isFinite(note.end_offset) && note.end_offset > note.start_offset);
+
+  if (!validNotes.length) {
+    return segments.map((segment) => ({ ...segment, noteIds: [] }));
+  }
+
+  return segments.flatMap((segment) => {
+    const overlapping = validNotes.filter((note) => note.start_offset < segment.end && note.end_offset > segment.start);
+    if (!overlapping.length) return [{ ...segment, noteIds: [] }];
+
+    const boundaries = new Set([segment.start, segment.end]);
+    overlapping.forEach((note) => {
+      boundaries.add(Math.max(segment.start, note.start_offset));
+      boundaries.add(Math.min(segment.end, note.end_offset));
+    });
+
+    const points = Array.from(boundaries).sort((a, b) => a - b);
+    const parts = [];
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const start = points[index];
+      const end = points[index + 1];
+      if (end <= start) continue;
+      const noteIds = overlapping
+        .filter((note) => note.start_offset < end && note.end_offset > start)
+        .map((note) => note.id);
+
+      parts.push({
+        ...segment,
+        text: segment.text.slice(start - segment.start, end - segment.start),
+        start,
+        end,
+        noteIds
+      });
+    }
+    return parts;
+  });
+}
+
+function segmentKey(segment) {
+  const noteKey = segment.noteIds?.length ? segment.noteIds.join('-') : 'none';
+  const itemKey = segment.item?.id || 'plain';
+  return `${segment.start}-${segment.end}-${segment.type}-${itemKey}-${noteKey}`;
+}
+
+function noteSegmentClass(segment) {
+  const classes = [];
+  if (segment.noteIds?.length) classes.push('is-note-marked');
+  if (segment.noteIds?.some((id) => Number(id) === Number(activeNoteId.value))) classes.push('is-active-note');
+  return classes;
+}
+
+function firstNoteForSegment(segment) {
+  const noteId = segment.noteIds?.[0];
+  if (!noteId) return null;
+  return notes.value.find((note) => Number(note.id) === Number(noteId)) || null;
 }
 
 function findMatchingPattern(text, patterns, index) {
@@ -628,8 +861,10 @@ async function startStudy(item) {
   studyEntry.value = item;
   studyVocabulary.value = [];
   studyGrammar.value = [];
+  notes.value = [];
   studyError.value = '';
   activePopover.value = null;
+  resetSelectionState();
   await loadStudy(item.id);
 }
 
@@ -641,16 +876,22 @@ async function reloadStudy() {
 async function loadStudy(id) {
   studyLoading.value = true;
   studyError.value = '';
+  notesLoading.value = true;
   try {
-    const data = await apiRequest(`/api/user/texts/${id}/study`);
+    const [data, noteData] = await Promise.all([
+      apiRequest(`/api/user/texts/${id}/study`),
+      apiRequest(`/api/user/texts/${id}/notes`)
+    ]);
     studyEntry.value = data.item;
     studyVocabulary.value = data.vocabulary || [];
     studyGrammar.value = data.grammar || [];
+    notes.value = noteData.rows || [];
   } catch (err) {
     studyError.value = err instanceof ApiError ? err.message : '加载失败';
     handleApiError(err);
   } finally {
     studyLoading.value = false;
+    notesLoading.value = false;
   }
 }
 
@@ -659,8 +900,37 @@ function closeStudy() {
   studyEntry.value = null;
   studyVocabulary.value = [];
   studyGrammar.value = [];
+  notes.value = [];
   studyError.value = '';
+  resetSelectionState();
   updateTopbarTitle('');
+}
+
+function resetSelectionState() {
+  currentSelection.value = null;
+  activeNoteId.value = null;
+  closeNoteEditor();
+  const selection = window.getSelection?.();
+  if (selection?.removeAllRanges) selection.removeAllRanges();
+}
+
+function closeNoteEditor() {
+  noteEditor.open = false;
+  noteEditor.mode = 'create';
+  noteEditor.noteId = null;
+  noteEditor.startOffset = 0;
+  noteEditor.endOffset = 0;
+  noteEditor.selectedText = '';
+  noteEditor.content = '';
+}
+
+function toggleSelectionMode() {
+  selectionMode.value = !selectionMode.value;
+  if (!selectionMode.value) {
+    currentSelection.value = null;
+    const selection = window.getSelection?.();
+    if (selection?.removeAllRanges) selection.removeAllRanges();
+  }
 }
 
 function updateTopbarTitle(title) {
@@ -676,17 +946,217 @@ function handleTopbarBack() {
   if (studyEntry.value) closeStudy();
 }
 
-function showPopover(event, segment) {
+function rangeOffsetWithin(container, node, offset) {
+  const range = document.createRange();
+  range.selectNodeContents(container);
+  range.setEnd(node, offset);
+  const length = range.toString().length;
+  range.detach?.();
+  return length;
+}
+
+function handleReadingSelection() {
+  if (!selectionMode.value || !readingTextRef.value || !studyEntry.value?.content) return;
+  window.setTimeout(() => {
+    const selection = window.getSelection?.();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      currentSelection.value = null;
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    const container = readingTextRef.value;
+    if (!container.contains(range.startContainer) || !container.contains(range.endContainer)) {
+      currentSelection.value = null;
+      return;
+    }
+
+    const content = String(studyEntry.value.content || '');
+    const startOffset = rangeOffsetWithin(container, range.startContainer, range.startOffset);
+    const endOffset = rangeOffsetWithin(container, range.endContainer, range.endOffset);
+    const start = Math.max(0, Math.min(startOffset, endOffset));
+    const end = Math.min(content.length, Math.max(startOffset, endOffset));
+    const selectedText = content.slice(start, end);
+
+    if (!selectedText.trim()) {
+      currentSelection.value = null;
+      return;
+    }
+
+    currentSelection.value = {
+      startOffset: start,
+      endOffset: end,
+      selectedText
+    };
+    activeNoteId.value = null;
+  }, 0);
+}
+
+function handleNoteSegmentClick(segment) {
+  const note = firstNoteForSegment(segment);
+  if (note) focusNote(note);
+}
+
+function handleAnnotatedSegmentClick(event, segment) {
+  const note = firstNoteForSegment(segment);
+  if (note) {
+    focusNote(note);
+    return;
+  }
+  showPopover(event, segment);
+}
+
+function startNoteForSelection() {
+  if (!currentSelection.value) {
+    showToast('请先选择课文中的文字', 'error');
+    return;
+  }
+
+  activeNoteId.value = null;
+  noteEditor.open = true;
+  noteEditor.mode = 'create';
+  noteEditor.noteId = null;
+  noteEditor.startOffset = currentSelection.value.startOffset;
+  noteEditor.endOffset = currentSelection.value.endOffset;
+  noteEditor.selectedText = currentSelection.value.selectedText;
+  noteEditor.content = '';
+}
+
+function editNote(note) {
+  activeNoteId.value = note.id;
+  noteEditor.open = true;
+  noteEditor.mode = 'edit';
+  noteEditor.noteId = note.id;
+  noteEditor.startOffset = note.start_offset;
+  noteEditor.endOffset = note.end_offset;
+  noteEditor.selectedText = note.selected_text;
+  noteEditor.content = note.note_content;
+}
+
+async function focusNote(note) {
+  editNote(note);
+  await nextTick();
+  const target = readingTextRef.value?.querySelector(`[data-note-ids~="${note.id}"]`);
+  target?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+}
+
+async function saveNote() {
+  if (!studyEntry.value?.id || noteSaving.value) return;
+  const noteContent = String(noteEditor.content || '').trim();
+  if (!noteContent) {
+    showToast('请输入笔记内容', 'error');
+    return;
+  }
+
+  noteSaving.value = true;
+  try {
+    if (noteEditor.mode === 'edit' && noteEditor.noteId) {
+      const data = await apiRequest(`/api/user/text-notes/${noteEditor.noteId}`, {
+        method: 'PATCH',
+        body: { noteContent }
+      });
+      notes.value = notes.value.map((note) => (Number(note.id) === Number(data.item.id) ? data.item : note));
+      activeNoteId.value = data.item.id;
+      editNote(data.item);
+      showToast('笔记已更新', 'success');
+      return;
+    }
+
+    const data = await apiRequest(`/api/user/texts/${studyEntry.value.id}/notes`, {
+      method: 'POST',
+      body: {
+        startOffset: noteEditor.startOffset,
+        endOffset: noteEditor.endOffset,
+        selectedText: noteEditor.selectedText,
+        noteContent
+      }
+    });
+    notes.value = [...notes.value, data.item].sort((a, b) => Number(a.start_offset) - Number(b.start_offset) || Number(a.id) - Number(b.id));
+    currentSelection.value = null;
+    activeNoteId.value = data.item.id;
+    editNote(data.item);
+    showToast('笔记已保存', 'success');
+  } catch (err) {
+    handleApiError(err);
+  } finally {
+    noteSaving.value = false;
+  }
+}
+
+async function deleteActiveNote() {
+  if (!noteEditor.noteId || noteSaving.value) return;
+  noteSaving.value = true;
+  try {
+    await apiRequest(`/api/user/text-notes/${noteEditor.noteId}`, { method: 'DELETE' });
+    notes.value = notes.value.filter((note) => Number(note.id) !== Number(noteEditor.noteId));
+    activeNoteId.value = null;
+    closeNoteEditor();
+    showToast('笔记已删除', 'success');
+  } catch (err) {
+    handleApiError(err);
+  } finally {
+    noteSaving.value = false;
+  }
+}
+
+async function askAboutSelection() {
+  if (!studyEntry.value?.id || !currentSelection.value || assistantOpening.value) return;
+  assistantOpening.value = true;
+  try {
+    const data = await apiRequest(`/api/user/assistant/context/text/${studyEntry.value.id}/selection`, {
+      method: 'POST',
+      timeout: 30000,
+      body: {
+        startOffset: currentSelection.value.startOffset,
+        endOffset: currentSelection.value.endOffset,
+        selectedText: currentSelection.value.selectedText
+      }
+    });
+    const conversationId = data?.conversation?.id;
+    if (!conversationId) throw new Error('对话信息无效');
+    window.dispatchEvent(new CustomEvent('assistant:open-conversation', {
+      detail: { id: conversationId }
+    }));
+  } catch (err) {
+    handleApiError(err);
+  } finally {
+    assistantOpening.value = false;
+  }
+}
+
+function resolvePopoverPosition(anchorX, anchorY, width, height) {
+  const margin = 16;
+  const verticalGap = 16;
+  const maxX = Math.max(margin, window.innerWidth - width - margin);
+  const x = Math.min(Math.max(margin, anchorX + 14), maxX);
+  const belowY = anchorY + verticalGap;
+  const aboveY = anchorY - height - verticalGap;
+  const hasRoomBelow = belowY + height <= window.innerHeight - margin;
+  const rawY = hasRoomBelow ? belowY : aboveY;
+  const maxY = Math.max(margin, window.innerHeight - height - margin);
+  const y = Math.min(Math.max(margin, rawY), maxY);
+  return { x, y };
+}
+
+async function showPopover(event, segment) {
   cancelHidePopover();
-  const width = segment.type === 'grammar' ? 390 : 330;
-  const x = Math.min(Math.max(16, event.clientX + 14), window.innerWidth - width - 16);
-  const y = Math.min(Math.max(16, event.clientY + 18), window.innerHeight - 260);
-  popoverPosition.x = x;
-  popoverPosition.y = y;
+  const width = Math.min(segment.type === 'grammar' ? 390 : 330, window.innerWidth - 32);
+  const estimatedHeight = segment.type === 'grammar' ? 290 : 210;
+  const initialPosition = resolvePopoverPosition(event.clientX, event.clientY, width, estimatedHeight);
+  popoverPosition.x = initialPosition.x;
+  popoverPosition.y = initialPosition.y;
   activePopover.value = {
     type: segment.type,
     item: segment.item
   };
+  await nextTick();
+  if (!activePopover.value || activePopover.value.item !== segment.item || activePopover.value.type !== segment.type) return;
+  const popover = document.querySelector('.course-study-popover');
+  if (!popover) return;
+  const rect = popover.getBoundingClientRect();
+  const measuredPosition = resolvePopoverPosition(event.clientX, event.clientY, Math.ceil(rect.width), Math.ceil(rect.height));
+  popoverPosition.x = measuredPosition.x;
+  popoverPosition.y = measuredPosition.y;
 }
 
 function scheduleHidePopover() {
@@ -708,7 +1178,6 @@ function metadataTags(item) {
   if (item?.is_onomatopoeia) tags.push({ key: 'onomatopoeia', label: 'オノマトペ', className: 'tag-onomatopoeia' });
   if (item?.is_loanword) tags.push({ key: 'loanword', label: '外来词', className: 'tag-loanword' });
   if (item?.has_kanji) tags.push({ key: 'kanji-word', label: '汉字词', className: 'tag-kanji-word' });
-  if (item?.is_key_word) tags.push({ key: 'key-word', label: '重点', className: 'tag-key-word' });
   return tags;
 }
 
@@ -716,6 +1185,14 @@ function grammarDisplay(item) {
   const grammar = String(item?.grammar || '').trim();
   const briefLogic = String(item?.brief_logic || '').trim();
   return briefLogic ? `${grammar} <${briefLogic}>` : grammar;
+}
+
+function grammarExamples(item) {
+  if (Array.isArray(item?.examples)) {
+    return item.examples.map((example) => String(example || '').trim()).filter(Boolean);
+  }
+  const text = String(item?.examples || '').trim();
+  return text ? [text] : [];
 }
 
 function openVocabularyAssistant(item) {
@@ -792,22 +1269,6 @@ async function toggleGrammarFavorite(item) {
   } catch (err) {
     handleApiError(err);
   }
-}
-
-function jumpToGrammar(item) {
-  if (!item?.id) {
-    showToast('文法条目信息无效', 'error');
-    return;
-  }
-  router.push({
-    name: 'GrammarStudy',
-    query: {
-      textbookId: item.textbook_id,
-      lessonId: item.lesson_id,
-      unitId: item.unit_id,
-      focus: item.id
-    }
-  });
 }
 
 watch(() => filters.textbookId, () => {

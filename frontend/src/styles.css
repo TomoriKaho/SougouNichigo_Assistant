@@ -3784,15 +3784,13 @@ button.assignment-return-button:hover {
 }
 
 .course-reading-toolbar {
-  display: flex;
-  align-items: center;
+  display: grid;
   gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
 .course-reading-toolbar label {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
   gap: 7px;
   color: var(--muted);
@@ -3802,7 +3800,8 @@ button.assignment-return-button:hover {
 }
 
 .course-reading-toolbar select {
-  min-width: 92px;
+  width: 100%;
+  min-width: 0;
 }
 
 .course-reading-toolbar.is-hidden {
@@ -3828,10 +3827,142 @@ button.assignment-return-button:hover {
 .course-reading-tool-window {
   min-height: 0;
   overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 14px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: #fffdf4;
   box-shadow: 0 14px 34px rgba(76, 48, 35, 0.1);
+}
+
+.course-tool-section {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(222, 207, 188, 0.8);
+}
+
+.course-tool-section:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.course-tool-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.course-tool-section-header h2 {
+  margin: 0;
+  color: #4c3023;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.course-tool-hint,
+.course-tool-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.course-tool-count {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.course-selection-toggle {
+  min-width: 64px;
+  padding: 6px 10px;
+}
+
+.course-selection-toggle.active {
+  border-color: rgba(7, 89, 133, 0.34);
+  background: rgba(14, 116, 144, 0.12);
+  color: #075985;
+}
+
+.course-selection-card {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(222, 207, 188, 0.9);
+  border-radius: 8px;
+  background: #fff9e8;
+}
+
+.course-selection-card p,
+.course-note-selected {
+  margin: 0;
+  color: #4c3023;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.course-selection-actions,
+.course-note-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.course-note-editor textarea {
+  width: 100%;
+  min-height: 104px;
+  resize: vertical;
+}
+
+.course-note-list {
+  display: grid;
+  gap: 8px;
+}
+
+.course-note-list-item {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid rgba(222, 207, 188, 0.9);
+  border-radius: 8px;
+  background: #fff9e8;
+  color: #4c3023;
+  text-align: left;
+  box-shadow: none;
+}
+
+.course-note-list-item:hover,
+.course-note-list-item.active {
+  border-color: rgba(184, 119, 27, 0.48);
+  background: #fff3cc;
+}
+
+.course-note-list-item strong,
+.course-note-list-item span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
+
+.course-note-list-item strong {
+  color: #4c3023;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-line-clamp: 2;
+}
+
+.course-note-list-item span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  -webkit-line-clamp: 2;
 }
 
 .course-reading-content {
@@ -3857,6 +3988,23 @@ button.assignment-return-button:hover {
 
 .course-reading-text {
   white-space: pre-wrap;
+}
+
+.course-text-segment.is-note-marked,
+.course-annotation.is-note-marked {
+  cursor: pointer;
+  background-image: linear-gradient(#b8771b, #b8771b);
+  background-repeat: no-repeat;
+  background-size: 100% 2px;
+  background-position: 0 calc(100% - 1px);
+}
+
+.course-text-segment.is-note-marked:hover,
+.course-annotation.is-note-marked:hover,
+.course-text-segment.is-active-note,
+.course-annotation.is-active-note {
+  background-color: rgba(184, 119, 27, 0.14);
+  box-shadow: 0 0 0 2px rgba(184, 119, 27, 0.08);
 }
 
 @media (max-width: 900px) {
@@ -3917,7 +4065,16 @@ button.assignment-return-button:hover {
 
 .course-study-popover.is-grammar-card {
   width: min(390px, calc(100vw - 32px));
+  min-height: 188px;
+  max-height: calc(100vh - 32px);
+  padding-bottom: 54px;
   border-color: rgba(185, 28, 28, 0.22);
+  overflow: hidden;
+}
+
+.course-study-popover.is-vocabulary-card {
+  min-height: 178px;
+  padding-bottom: 54px;
 }
 
 .course-popover-header {
@@ -3934,6 +4091,79 @@ button.assignment-return-button:hover {
   font-size: 21px;
   line-height: 1.3;
   overflow-wrap: anywhere;
+}
+
+.course-vocabulary-popover-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  min-height: 30px;
+  gap: 12px;
+}
+
+.course-vocabulary-popover-term.is-non-key-word {
+  color: #5d5957;
+}
+
+.course-vocabulary-popover-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: 102px;
+}
+
+.course-vocabulary-popover-accent {
+  max-width: 102px;
+  color: var(--theme-red-dark);
+  font-family: 'Yu Mincho', 'Hiragino Mincho ProN', 'Noto Serif JP', 'Songti SC', serif;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.course-vocabulary-popover-tags {
+  width: 72px;
+  max-width: 72px;
+  justify-content: flex-end;
+  align-content: flex-start;
+  margin: 0;
+}
+
+.course-vocabulary-popover-meta-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.course-vocabulary-popover-meta-row.has-tags {
+  grid-template-columns: minmax(0, 1fr) 72px;
+}
+
+.course-vocabulary-popover-meta-left {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.course-popover-question-button {
+  left: 14px;
+  bottom: 12px;
+}
+
+.course-popover-entry-actions {
+  right: 14px;
+  bottom: 12px;
+}
+
+.course-popover-entry-actions .grammar-favorite-button {
+  margin-right: 0;
+  font-size: 30px;
 }
 
 .course-popover-icon-button {
@@ -3985,7 +4215,7 @@ button.assignment-return-button:hover {
   margin: 2px 0 0;
 }
 
-.course-grammar-popover-fields div {
+.course-grammar-popover-fields>div {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
   gap: 8px;
@@ -4008,17 +4238,27 @@ button.assignment-return-button:hover {
   color: var(--text);
 }
 
-.course-popover-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 4px;
+.course-grammar-popover-example-row {
+  align-items: start;
 }
 
-.course-popover-actions button {
-  padding: 7px 12px;
-  font-size: 13px;
-  line-height: 1.15;
+.course-grammar-popover-examples {
+  height: 78px;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  padding-right: 4px;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  scrollbar-width: thin;
+}
+
+.course-grammar-popover-examples p {
+  margin: 0 0 6px;
+}
+
+.course-grammar-popover-examples p:last-child {
+  margin-bottom: 0;
 }
 
 .text-context-grid {
