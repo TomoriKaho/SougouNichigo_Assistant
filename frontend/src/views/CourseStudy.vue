@@ -112,29 +112,32 @@
       </label>
     </div>
 
-    <div class="course-reading-body">
-      <div v-if="studyLoading" class="loading">加载中...</div>
-      <div v-else-if="studyError" class="error-block">
-        <p class="error">{{ studyError }}</p>
-        <button class="ghost" @click="reloadStudy">重试</button>
-      </div>
-      <article v-else class="course-reading-content" @mouseleave="scheduleHidePopover">
-        <h1 class="course-reading-article-title">{{ studyEntry.title }}</h1>
-        <div class="course-reading-text">
-          <template v-for="(segment, index) in annotatedSegments" :key="`${index}-${segment.text}`">
-            <span v-if="segment.type === 'text'">{{ segment.text }}</span>
-            <span
-              v-else
-              class="course-annotation"
-              :class="segment.type === 'grammar' ? 'is-grammar' : 'is-vocabulary'"
-              @mouseenter="showPopover($event, segment)"
-              @mouseover="showPopover($event, segment)"
-              @click.stop="showPopover($event, segment)"
-              @mouseleave="scheduleHidePopover"
-            >{{ segment.text }}</span>
-          </template>
+    <div class="course-reading-layout">
+      <div class="course-reading-body">
+        <div v-if="studyLoading" class="loading">加载中...</div>
+        <div v-else-if="studyError" class="error-block">
+          <p class="error">{{ studyError }}</p>
+          <button class="ghost" @click="reloadStudy">重试</button>
         </div>
-      </article>
+        <article v-else class="course-reading-content" @mouseleave="scheduleHidePopover">
+          <h1 class="course-reading-article-title">{{ studyEntry.title }}</h1>
+          <div class="course-reading-text">
+            <template v-for="(segment, index) in annotatedSegments" :key="`${index}-${segment.text}`">
+              <span v-if="segment.type === 'text'">{{ segment.text }}</span>
+              <span
+                v-else
+                class="course-annotation"
+                :class="segment.type === 'grammar' ? 'is-grammar' : 'is-vocabulary'"
+                @mouseenter="showPopover($event, segment)"
+                @mouseover="showPopover($event, segment)"
+                @click.stop="showPopover($event, segment)"
+                @mouseleave="scheduleHidePopover"
+              >{{ segment.text }}</span>
+            </template>
+          </div>
+        </article>
+      </div>
+      <aside class="course-reading-tool-window" aria-hidden="true"></aside>
     </div>
 
     <div

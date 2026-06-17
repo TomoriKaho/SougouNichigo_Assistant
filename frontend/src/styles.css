@@ -3745,7 +3745,12 @@ button.assignment-return-button:hover {
   gap: 14px;
   height: 100%;
   min-height: 0;
+  padding: 0;
   overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .course-reading-header {
@@ -3804,8 +3809,15 @@ button.assignment-return-button:hover {
   display: none;
 }
 
-.course-reading-body {
+.course-reading-layout {
   flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(270px, 24vw, 330px);
+  gap: 14px;
+}
+
+.course-reading-body {
   min-height: 0;
   overflow: auto;
   border: 1px solid var(--border);
@@ -3813,10 +3825,20 @@ button.assignment-return-button:hover {
   background: #fff6d8;
 }
 
+.course-reading-tool-window {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fffdf4;
+  box-shadow: 0 14px 34px rgba(76, 48, 35, 0.1);
+}
+
 .course-reading-content {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 34px 42px 46px;
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 28px 30px 40px;
   color: #2e2723;
   font-family: 'Yu Mincho', 'Hiragino Mincho ProN', 'Noto Serif JP', 'Songti SC', serif;
   font-size: 20px;
@@ -3835,6 +3857,16 @@ button.assignment-return-button:hover {
 
 .course-reading-text {
   white-space: pre-wrap;
+}
+
+@media (max-width: 900px) {
+  .course-reading-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .course-reading-tool-window {
+    min-height: 180px;
+  }
 }
 
 .course-annotation {

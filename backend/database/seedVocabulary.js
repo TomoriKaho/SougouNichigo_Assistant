@@ -1,6 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const { deriveVocabularyFlags } = require('../lib/vocabularyFlags')
+const { normalizeVocabularyWordFields } = require('../lib/vocabularyTermNormalizer')
 
 const DEFAULT_TEXTBOOK_NAME = '综合日语 第四册'
 const VOCABULARY_SOURCES = [
@@ -12,7 +13,8 @@ const VOCABULARY_SOURCES = [
   {
     fileName: 'vocabulary_2.json',
     textbookName: '综合日语 第二册',
-    orderIndex: 2
+    orderIndex: 2,
+    swapKanaTermWithKanjiSupplement: true
   }
 ]
 
@@ -127,9 +129,12 @@ function seedVocabularySource(db, source) {
           const words = Array.isArray(table['词条列表']) ? table['词条列表'] : []
 
           words.forEach((word) => {
-            const term = normalizeText(word['词条'])
+            const normalizedWord = normalizeVocabularyWordFields(word, {
+              swapKanaTermWithKanjiSupplement: !!source.swapKanaTermWithKanjiSupplement
+            })
+            const term = normalizedWord.term
             if (!term) return
-            const supplement = normalizeText(word['词条补充'])
+            const supplement = normalizedWord.supplement
             const accent = normalizeText(word['声调'])
             const partOfSpeech = normalizeText(word['词性'])
             const explanation = normalizeText(word['词语解释'] || word['解释'])
