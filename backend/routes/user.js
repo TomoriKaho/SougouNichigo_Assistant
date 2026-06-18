@@ -404,6 +404,8 @@ router.post('/assistant/conversations', authMiddleware, (req, res) => {
 router.get('/assistant/conversations', authMiddleware, (req, res) => {
   res.json(assistantService.listConversations({
     userId: req.user.id,
+    contextType: req.query.context_type || req.query.contextType,
+    contextId: req.query.context_id || req.query.contextId,
     limit: parseLimit(req.query.limit, 50, 200),
     offset: parseOffset(req.query.offset)
   }))

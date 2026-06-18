@@ -143,8 +143,8 @@ function createTextSelectionConversation(userId, id, payload = {}) {
   }, userId)
 }
 
-function listConversations({ userId, limit, offset }) {
-  const result = AssistantConversation.listOwned({ userId, limit, offset })
+function listConversations({ userId, contextType, contextId, limit, offset }) {
+  const result = AssistantConversation.listOwned({ userId, contextType, contextId, limit, offset })
   return {
     ...result,
     rows: result.rows.map((item) => decorateConversation(item, userId))

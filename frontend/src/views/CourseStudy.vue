@@ -102,8 +102,12 @@
         <article
           v-else
           class="course-reading-content"
+          :class="{ 'is-selection-mode': selectionMode }"
+          @mousedown="beginReadingSelectionDrag"
+          @touchstart.passive="beginReadingSelectionDrag"
           @mouseleave="scheduleHidePopover"
-          @mouseup="handleReadingSelection"
+          @mouseup="handleReadingMouseUp"
+          @touchend="handleReadingMouseUp"
           @keyup="handleReadingSelection"
         >
           <h1 class="course-reading-article-title">{{ studyEntry.title }}</h1>
@@ -116,7 +120,10 @@
                 :data-start="segment.start"
                 :data-end="segment.end"
                 :data-note-ids="segment.noteIds.join(' ')"
-                @click="handleNoteSegmentClick(segment)"
+                @mouseenter="showNoteForSegment($event, segment)"
+                @mouseover="showNoteForSegment($event, segment)"
+                @mouseleave="scheduleHideNotePreview"
+                @click="handleNoteSegmentClick($event, segment)"
               >{{ segment.text }}</span>
               <span
                 v-else
@@ -128,82 +135,60 @@
                 :data-start="segment.start"
                 :data-end="segment.end"
                 :data-note-ids="segment.noteIds.join(' ')"
-                @mouseenter="showPopover($event, segment)"
-                @mouseover="showPopover($event, segment)"
+                @mouseenter="handleAnnotatedSegmentHover($event, segment)"
+                @mouseover="handleAnnotatedSegmentHover($event, segment)"
                 @click.stop="handleAnnotatedSegmentClick($event, segment)"
-                @mouseleave="scheduleHidePopover"
+                @mouseleave="handleAnnotatedSegmentLeave"
               >{{ segment.text }}</span>
             </template>
           </div>
         </article>
       </div>
       <aside class="course-reading-tool-window">
-        <section class="course-tool-section">
-          <div class="course-tool-section-header">
-            <h2>选择工具</h2>
+        <section class="course-tool-section course-selection-tool-section">
+          <div class="course-selection-tool-row">
             <button
               class="course-selection-toggle"
               :class="{ active: selectionMode }"
               type="button"
               @click="toggleSelectionMode"
             >
-              {{ selectionMode ? '已开启' : '开启' }}
+              {{ selectionMode ? '选择中' : '选择工具' }}
             </button>
-          </div>
-          <p class="course-tool-hint">{{ selectionMode ? '选中课文中的文字后，可以提问或添加笔记。' : '开启后再选择课文文字。' }}</p>
-          <div v-if="currentSelection" class="course-selection-card">
-            <p>{{ selectionPreview }}</p>
-            <div class="course-selection-actions">
-              <button type="button" :disabled="assistantOpening" @click="askAboutSelection">提问</button>
-              <button class="ghost" type="button" @click="startNoteForSelection">笔记</button>
-            </div>
+            <p class="course-tool-hint">选中文字后，可以提问或添加笔记。</p>
           </div>
         </section>
 
-        <section v-if="noteEditor.open" class="course-tool-section course-note-editor">
-          <div class="course-tool-section-header">
-            <h2>{{ noteEditor.mode === 'edit' ? '编辑笔记' : '新建笔记' }}</h2>
-            <button class="ghost" type="button" @click="closeNoteEditor">关闭</button>
-          </div>
-          <p class="course-note-selected">{{ noteEditor.selectedText }}</p>
-          <textarea v-model="noteEditor.content" rows="5" placeholder="输入笔记内容"></textarea>
-          <div class="course-note-editor-actions">
-            <button type="button" :disabled="noteSaving" @click="saveNote">{{ noteSaving ? '保存中...' : '保存' }}</button>
-            <button
-              v-if="noteEditor.mode === 'edit'"
-              class="ghost danger"
-              type="button"
-              :disabled="noteSaving"
-              @click="deleteActiveNote"
-            >
-              删除
-            </button>
+        <section class="course-tool-section course-practice-section">
+          <div class="course-practice-row">
+            <button class="course-practice-start-button" type="button" disabled>开始练习</button>
+            <h2>课文内容练习</h2>
           </div>
         </section>
 
-        <section class="course-tool-section">
+        <section class="course-tool-section course-notes-section">
           <div class="course-tool-section-header">
-            <h2>笔记</h2>
-            <span class="course-tool-count">{{ notes.length }}</span>
+            <h2>提问历史</h2>
+            <span class="course-tool-count">{{ questionHistoryRows.length }}</span>
           </div>
-          <div v-if="notesLoading" class="course-tool-empty">加载中...</div>
-          <div v-else-if="notes.length" class="course-note-list">
+          <div v-if="questionHistoryLoading" class="course-tool-empty">加载中...</div>
+          <div v-else-if="questionHistoryRows.length" class="course-note-list">
             <button
-              v-for="note in notes"
-              :key="note.id"
+              v-for="item in questionHistoryRows"
+              :key="item.id"
               class="course-note-list-item"
-              :class="{ active: Number(activeNoteId) === Number(note.id) }"
+              :class="{ active: Number(activeQuestionConversationId) === Number(item.id) }"
               type="button"
-              @click="focusNote(note)"
+              @click="openQuestionHistoryConversation(item)"
             >
-              <strong>{{ note.selected_text }}</strong>
-              <span>{{ note.note_content }}</span>
+              <strong class="course-note-list-content">{{ questionHistorySelectionLabel(item) }}</strong>
+              <span class="course-note-list-source">{{ questionHistoryQuestionLabel(item) }}</span>
             </button>
           </div>
-          <div v-else class="course-tool-empty">暂无笔记</div>
+          <div v-else class="course-tool-empty">暂无提问历史</div>
         </section>
 
-        <section class="course-tool-section">
+        <section class="course-tool-section course-marker-filter-section">
           <div class="course-tool-section-header">
             <h2>标记过滤</h2>
           </div>
@@ -228,6 +213,54 @@
           </div>
         </section>
       </aside>
+    </div>
+
+    <div
+      v-if="currentSelection && !noteEditor.open"
+      class="course-selection-floating-actions"
+      :style="selectionActionsStyle"
+      @mousedown.prevent
+    >
+      <button type="button" :disabled="assistantOpening" @click="askAboutSelection">提问</button>
+      <button class="ghost" type="button" @click="startNoteForSelection">笔记</button>
+    </div>
+
+    <div
+      v-if="noteEditor.open"
+      class="course-note-floating-editor"
+      :class="{ 'is-view-mode': noteEditor.mode === 'view' }"
+      :style="noteEditorStyle"
+      @mousedown.stop
+      @click.stop
+      @mouseenter="cancelHideNotePreview"
+      @mouseleave="closeNotePreview"
+    >
+      <div
+        v-if="noteEditor.mode === 'view'"
+        class="course-note-floating-view"
+        @click="promoteViewedNoteToEdit($event)"
+      >
+        {{ noteEditor.content }}
+      </div>
+      <template v-else>
+      <div class="course-note-floating-header" @mousedown="startNoteEditorDrag">
+        <h2>{{ noteEditor.mode === 'edit' ? '编辑笔记' : '新建笔记' }}</h2>
+        <div class="course-note-editor-header-actions" @mousedown.stop>
+          <button
+            v-if="noteEditor.mode === 'edit'"
+            class="ghost danger"
+            type="button"
+            :disabled="noteSaving"
+            @click="deleteActiveNote"
+          >
+            删除
+          </button>
+          <button type="button" :disabled="noteSaving" @click="saveNote">{{ noteSaving ? '保存中...' : '保存' }}</button>
+          <button class="ghost" type="button" @click="closeNoteEditor">关闭</button>
+        </div>
+      </div>
+      <textarea ref="noteEditorTextareaRef" v-model="noteEditor.content" placeholder="输入笔记内容"></textarea>
+      </template>
     </div>
 
     <div
@@ -380,16 +413,25 @@ const studyLoading = ref(false);
 const studyError = ref('');
 const activePopover = ref(null);
 const readingTextRef = ref(null);
+const noteEditorTextareaRef = ref(null);
 const notes = ref([]);
 const notesLoading = ref(false);
+const questionHistoryRows = ref([]);
+const questionHistoryLoading = ref(false);
 const selectionMode = ref(false);
 const currentSelection = ref(null);
+const readingSelectionDragging = ref(false);
 const activeNoteId = ref(null);
+const activeQuestionConversationId = ref(null);
 const noteSaving = ref(false);
 const assistantOpening = ref(false);
 const popoverPosition = reactive({ x: 0, y: 0 });
+const selectionActionsPosition = reactive({ x: 0, y: 0 });
 const toast = reactive({ visible: false, message: '', type: 'info' });
+const NOTE_EDITOR_TOOLBAR_HEIGHT = 46;
 let hidePopoverTimer = 0;
+let hideNotePreviewTimer = 0;
+let noteEditorDragState = null;
 
 const noteEditor = reactive({
   open: false,
@@ -398,7 +440,11 @@ const noteEditor = reactive({
   startOffset: 0,
   endOffset: 0,
   selectedText: '',
-  content: ''
+  content: '',
+  x: 0,
+  y: 0,
+  width: 320,
+  height: 190
 });
 
 const filters = reactive({
@@ -420,6 +466,16 @@ const courseReadingMeta = computed(() => (
 const popoverStyle = computed(() => ({
   left: `${popoverPosition.x}px`,
   top: `${popoverPosition.y}px`
+}));
+const selectionActionsStyle = computed(() => ({
+  left: `${selectionActionsPosition.x}px`,
+  top: `${selectionActionsPosition.y}px`
+}));
+const noteEditorStyle = computed(() => ({
+  left: `${noteEditor.x}px`,
+  top: `${noteEditor.y}px`,
+  width: `${noteEditor.width}px`,
+  height: `${noteEditorOuterHeight()}px`
 }));
 
 const wordMarkerItems = computed(() => {
@@ -473,11 +529,6 @@ const markerPatterns = computed(() => {
 
 const annotatedSegments = computed(() => annotateText(studyEntry.value?.content || '', markerPatterns.value));
 const displaySegments = computed(() => splitSegmentsByNotes(annotatedSegments.value, notes.value));
-const selectionPreview = computed(() => {
-  const text = String(currentSelection.value?.selectedText || '').replace(/\s+/g, ' ').trim();
-  if (!text) return '';
-  return text.length > 120 ? `${text.slice(0, 120)}...` : text;
-});
 
 function showToast(message, type = 'info') {
   toast.message = message;
@@ -862,6 +913,7 @@ async function startStudy(item) {
   studyVocabulary.value = [];
   studyGrammar.value = [];
   notes.value = [];
+  questionHistoryRows.value = [];
   studyError.value = '';
   activePopover.value = null;
   resetSelectionState();
@@ -877,21 +929,69 @@ async function loadStudy(id) {
   studyLoading.value = true;
   studyError.value = '';
   notesLoading.value = true;
+  questionHistoryLoading.value = true;
   try {
-    const [data, noteData] = await Promise.all([
+    const [data, noteData, questionHistoryData] = await Promise.all([
       apiRequest(`/api/user/texts/${id}/study`),
-      apiRequest(`/api/user/texts/${id}/notes`)
+      apiRequest(`/api/user/texts/${id}/notes`),
+      loadQuestionHistoryRows(id)
     ]);
     studyEntry.value = data.item;
     studyVocabulary.value = data.vocabulary || [];
     studyGrammar.value = data.grammar || [];
     notes.value = noteData.rows || [];
+    questionHistoryRows.value = filterTextSelectionQuestionHistory(questionHistoryData.rows || [], id);
   } catch (err) {
     studyError.value = err instanceof ApiError ? err.message : '加载失败';
     handleApiError(err);
   } finally {
     studyLoading.value = false;
     notesLoading.value = false;
+    questionHistoryLoading.value = false;
+  }
+}
+
+function loadQuestionHistoryRows(textId) {
+  return apiRequest('/api/user/assistant/conversations', {
+    params: {
+      contextType: 'text',
+      contextId: textId,
+      limit: 200,
+      offset: 0
+    },
+    timeout: 30000
+  });
+}
+
+function isTextSelectionQuestionHistory(item, textId) {
+  const snapshot = item?.context_snapshot || {};
+  const selectedText = String(snapshot.selected_text || snapshot.selection?.selectedText || '').trim();
+  const startOffset = Number(snapshot.start_offset ?? snapshot.startOffset);
+  const endOffset = Number(snapshot.end_offset ?? snapshot.endOffset);
+  return (
+    item?.context_type === 'text'
+    && Number(item.context_id) === Number(textId)
+    && selectedText.length > 0
+    && Number.isFinite(startOffset)
+    && Number.isFinite(endOffset)
+    && endOffset > startOffset
+  );
+}
+
+function filterTextSelectionQuestionHistory(rows, textId) {
+  return rows.filter((item) => isTextSelectionQuestionHistory(item, textId));
+}
+
+async function refreshQuestionHistory() {
+  if (!studyEntry.value?.id) return;
+  questionHistoryLoading.value = true;
+  try {
+    const data = await loadQuestionHistoryRows(studyEntry.value.id);
+    questionHistoryRows.value = filterTextSelectionQuestionHistory(data.rows || [], studyEntry.value.id);
+  } catch (err) {
+    handleApiError(err);
+  } finally {
+    questionHistoryLoading.value = false;
   }
 }
 
@@ -901,6 +1001,7 @@ function closeStudy() {
   studyVocabulary.value = [];
   studyGrammar.value = [];
   notes.value = [];
+  questionHistoryRows.value = [];
   studyError.value = '';
   resetSelectionState();
   updateTopbarTitle('');
@@ -915,6 +1016,7 @@ function resetSelectionState() {
 }
 
 function closeNoteEditor() {
+  cancelHideNotePreview();
   noteEditor.open = false;
   noteEditor.mode = 'create';
   noteEditor.noteId = null;
@@ -925,12 +1027,15 @@ function closeNoteEditor() {
 }
 
 function toggleSelectionMode() {
-  selectionMode.value = !selectionMode.value;
-  if (!selectionMode.value) {
+  const nextMode = !selectionMode.value;
+  selectionMode.value = nextMode;
+  if (!nextMode) {
     currentSelection.value = null;
     const selection = window.getSelection?.();
     if (selection?.removeAllRanges) selection.removeAllRanges();
+    return;
   }
+  window.setTimeout(handleReadingSelection, 0);
 }
 
 function updateTopbarTitle(title) {
@@ -953,6 +1058,176 @@ function rangeOffsetWithin(container, node, offset) {
   const length = range.toString().length;
   range.detach?.();
   return length;
+}
+
+function resolveSelectionActionsPosition(range) {
+  const margin = 12;
+  const gap = 8;
+  const actionWidth = 122;
+  const actionHeight = 38;
+  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+  const rect = rects[0] || range.getBoundingClientRect();
+  const maxX = Math.max(margin, window.innerWidth - actionWidth - margin);
+  const maxY = Math.max(margin, window.innerHeight - actionHeight - margin);
+  const preferredX = rect.right + gap;
+  const fallbackX = rect.right - actionWidth;
+  const preferredY = rect.top - actionHeight - gap;
+  const fallbackY = rect.bottom + gap;
+  const x = preferredX <= maxX ? preferredX : fallbackX;
+  const y = preferredY >= margin ? preferredY : fallbackY;
+  return {
+    x: Math.min(Math.max(margin, x), maxX),
+    y: Math.min(Math.max(margin, y), maxY)
+  };
+}
+
+function inflateRect(rect, size = 0) {
+  if (!rect) return null;
+  return {
+    left: rect.left - size,
+    top: rect.top - size,
+    right: rect.right + size,
+    bottom: rect.bottom + size,
+    width: rect.width + size * 2,
+    height: rect.height + size * 2
+  };
+}
+
+function rectsOverlap(a, b) {
+  if (!a || !b) return false;
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+function distanceBetweenRects(a, b) {
+  if (!a || !b) return 0;
+  const dx = Math.max(a.left - b.right, b.left - a.right, 0);
+  const dy = Math.max(a.top - b.bottom, b.top - a.bottom, 0);
+  return Math.hypot(dx, dy);
+}
+
+function rectFromPosition(x, y, width, height) {
+  return {
+    left: x,
+    top: y,
+    right: x + width,
+    bottom: y + height,
+    width,
+    height
+  };
+}
+
+function getPopoverRect() {
+  return document.querySelector('.course-study-popover')?.getBoundingClientRect?.() || null;
+}
+
+function getNoteEditorRect() {
+  return document.querySelector('.course-note-floating-editor')?.getBoundingClientRect?.() || null;
+}
+
+function noteEditorOuterHeight(mode = noteEditor.mode) {
+  return mode === 'view'
+    ? Math.max(80, noteEditor.height - NOTE_EDITOR_TOOLBAR_HEIGHT)
+    : noteEditor.height;
+}
+
+function resolveFloatingPosition(anchorRect, width, height, options = {}) {
+  const margin = 12;
+  const gap = options.gap ?? 8;
+  const rect = anchorRect || { left: margin, top: margin, right: margin, bottom: margin, width: 0, height: 0 };
+  const maxX = Math.max(margin, window.innerWidth - width - margin);
+  const maxY = Math.max(margin, window.innerHeight - height - margin);
+  const clampX = (value) => Math.min(Math.max(margin, value), maxX);
+  const clampY = (value) => Math.min(Math.max(margin, value), maxY);
+  const avoidRects = (options.avoidRects || []).filter(Boolean).map((item) => inflateRect(item, gap));
+  const candidates = [
+    { x: clampX(rect.left), y: rect.bottom + gap },
+    { x: clampX(rect.left), y: rect.top - height - gap },
+    { x: rect.right + gap, y: clampY(rect.top) },
+    { x: rect.left - width - gap, y: clampY(rect.top) },
+    { x: clampX(rect.right - width), y: rect.bottom + gap },
+    { x: clampX(rect.right - width), y: rect.top - height - gap }
+  ]
+    .filter((candidate) => (
+      candidate.x >= margin
+      && candidate.x <= maxX
+      && candidate.y >= margin
+      && candidate.y <= maxY
+    ))
+    .map((candidate) => ({
+      x: clampX(candidate.x),
+      y: clampY(candidate.y)
+    }));
+
+  const nonOverlapping = candidates
+    .filter((candidate) => {
+      const candidateRect = rectFromPosition(candidate.x, candidate.y, width, height);
+      return !avoidRects.some((avoidRect) => rectsOverlap(candidateRect, avoidRect));
+    })
+    .sort((a, b) => {
+      const rectA = rectFromPosition(a.x, a.y, width, height);
+      const rectB = rectFromPosition(b.x, b.y, width, height);
+      return distanceBetweenRects(rectA, rect) - distanceBetweenRects(rectB, rect);
+    });
+
+  if (nonOverlapping.length) return nonOverlapping[0];
+
+  return candidates[0] || { x: margin, y: margin };
+}
+
+function resolveNoteEditorPosition(anchorRect, width = noteEditor.width, height = noteEditorOuterHeight()) {
+  const avoidRects = [anchorRect];
+  const popoverRect = getPopoverRect();
+  if (popoverRect) avoidRects.push(popoverRect);
+  return resolveFloatingPosition(anchorRect, width, height, { gap: 8, avoidRects });
+}
+
+function positionNoteEditor(anchorRect) {
+  const position = resolveNoteEditorPosition(anchorRect);
+  noteEditor.x = position.x;
+  noteEditor.y = position.y;
+}
+
+function rectFromRange(range) {
+  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+  const rect = rects[0] || range.getBoundingClientRect();
+  return {
+    left: rect.left,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    width: rect.width,
+    height: rect.height
+  };
+}
+
+function rectFromEventTarget(event) {
+  const rect = event?.currentTarget?.getBoundingClientRect?.();
+  if (!rect) return null;
+  return {
+    left: rect.left,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    width: rect.width,
+    height: rect.height
+  };
+}
+
+function beginReadingSelectionDrag(event) {
+  if (event.type === 'mousedown' && event.button !== 0) return;
+  readingSelectionDragging.value = true;
+  activePopover.value = null;
+  cancelHidePopover();
+}
+
+function finishReadingSelectionDrag() {
+  if (!readingSelectionDragging.value) return;
+  readingSelectionDragging.value = false;
+}
+
+function handleReadingMouseUp() {
+  finishReadingSelectionDrag();
+  handleReadingSelection();
 }
 
 function handleReadingSelection() {
@@ -983,27 +1258,49 @@ function handleReadingSelection() {
       return;
     }
 
+    const selectionRect = rectFromRange(range);
+    const position = resolveSelectionActionsPosition(range);
+    selectionActionsPosition.x = position.x;
+    selectionActionsPosition.y = position.y;
     currentSelection.value = {
       startOffset: start,
       endOffset: end,
-      selectedText
+      selectedText,
+      rect: selectionRect
     };
     activeNoteId.value = null;
   }, 0);
 }
 
-function handleNoteSegmentClick(segment) {
+function handleNoteSegmentClick(event, segment) {
   const note = firstNoteForSegment(segment);
-  if (note) focusNote(note);
+  if (note) openNoteEditor(note, rectFromEventTarget(event));
 }
 
 function handleAnnotatedSegmentClick(event, segment) {
   const note = firstNoteForSegment(segment);
   if (note) {
-    focusNote(note);
+    openNoteEditor(note, rectFromEventTarget(event));
     return;
   }
   showPopover(event, segment);
+}
+
+function handleAnnotatedSegmentHover(event, segment) {
+  showPopover(event, segment);
+  showNoteForSegment(event, segment);
+}
+
+function handleAnnotatedSegmentLeave() {
+  scheduleHidePopover();
+  scheduleHideNotePreview();
+}
+
+function showNoteForSegment(event, segment) {
+  if (readingSelectionDragging.value) return;
+  const note = firstNoteForSegment(segment);
+  if (!note || (noteEditor.open && (noteEditor.mode === 'create' || noteEditor.mode === 'edit'))) return;
+  showNotePreview(note, rectFromEventTarget(event));
 }
 
 function startNoteForSelection() {
@@ -1012,6 +1309,8 @@ function startNoteForSelection() {
     return;
   }
 
+  activePopover.value = null;
+  cancelHidePopover();
   activeNoteId.value = null;
   noteEditor.open = true;
   noteEditor.mode = 'create';
@@ -1020,9 +1319,25 @@ function startNoteForSelection() {
   noteEditor.endOffset = currentSelection.value.endOffset;
   noteEditor.selectedText = currentSelection.value.selectedText;
   noteEditor.content = '';
+  positionNoteEditor(currentSelection.value.rect);
 }
 
-function editNote(note) {
+function showNotePreview(note, anchorRect) {
+  cancelHideNotePreview();
+  activeNoteId.value = note.id;
+  noteEditor.open = true;
+  noteEditor.mode = 'view';
+  noteEditor.noteId = note.id;
+  noteEditor.startOffset = note.start_offset;
+  noteEditor.endOffset = note.end_offset;
+  noteEditor.selectedText = note.selected_text;
+  noteEditor.content = note.note_content;
+  positionNoteEditor(anchorRect);
+}
+
+function openNoteEditor(note, anchorRect) {
+  activePopover.value = null;
+  cancelHidePopover();
   activeNoteId.value = note.id;
   noteEditor.open = true;
   noteEditor.mode = 'edit';
@@ -1031,13 +1346,153 @@ function editNote(note) {
   noteEditor.endOffset = note.end_offset;
   noteEditor.selectedText = note.selected_text;
   noteEditor.content = note.note_content;
+  positionNoteEditor(anchorRect);
+}
+
+function textOffsetWithin(container, node, offset) {
+  if (!container || !node) return 0;
+  const range = document.createRange();
+  range.selectNodeContents(container);
+  try {
+    range.setEnd(node, offset);
+    return range.toString().length;
+  } catch (error) {
+    return String(container.textContent || '').length;
+  } finally {
+    range.detach?.();
+  }
+}
+
+function caretOffsetFromPoint(event) {
+  const container = event?.currentTarget;
+  const contentLength = String(noteEditor.content || '').length;
+  if (!container) return contentLength;
+
+  let node = null;
+  let offset = 0;
+  if (document.caretPositionFromPoint) {
+    const position = document.caretPositionFromPoint(event.clientX, event.clientY);
+    node = position?.offsetNode || null;
+    offset = position?.offset || 0;
+  } else if (document.caretRangeFromPoint) {
+    const range = document.caretRangeFromPoint(event.clientX, event.clientY);
+    node = range?.startContainer || null;
+    offset = range?.startOffset || 0;
+  }
+
+  if (!node || !container.contains(node)) return contentLength;
+  return Math.min(Math.max(0, textOffsetWithin(container, node, offset)), contentLength);
+}
+
+async function focusNoteEditorTextarea(caretOffset = null) {
+  await nextTick();
+  const textarea = noteEditorTextareaRef.value;
+  if (!textarea) return;
+  const contentLength = String(noteEditor.content || '').length;
+  const offset = caretOffset === null ? contentLength : Math.min(Math.max(0, caretOffset), contentLength);
+  textarea.focus();
+  textarea.setSelectionRange(offset, offset);
+}
+
+function promoteViewedNoteToEdit(event) {
+  if (noteEditor.mode !== 'view' || !noteEditor.noteId) return;
+  const caretOffset = caretOffsetFromPoint(event);
+  const margin = 12;
+  noteEditor.y = Math.max(margin, noteEditor.y - NOTE_EDITOR_TOOLBAR_HEIGHT);
+  noteEditor.mode = 'edit';
+  focusNoteEditorTextarea(caretOffset);
+}
+
+function closeNotePreview() {
+  if (noteEditor.mode !== 'view') return;
+  closeNoteEditor();
+}
+
+function scheduleHideNotePreview() {
+  if (noteEditor.mode !== 'view') return;
+  cancelHideNotePreview();
+  hideNotePreviewTimer = window.setTimeout(() => {
+    closeNotePreview();
+  }, 180);
+}
+
+function cancelHideNotePreview() {
+  if (!hideNotePreviewTimer) return;
+  window.clearTimeout(hideNotePreviewTimer);
+  hideNotePreviewTimer = 0;
+}
+
+function startNoteEditorDrag(event) {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  noteEditorDragState = {
+    offsetX: event.clientX - noteEditor.x,
+    offsetY: event.clientY - noteEditor.y
+  };
+}
+
+function handleNoteEditorDragMove(event) {
+  if (!noteEditorDragState) return;
+  const margin = 12;
+  const maxX = Math.max(margin, window.innerWidth - noteEditor.width - margin);
+  const maxY = Math.max(margin, window.innerHeight - noteEditorOuterHeight() - margin);
+  noteEditor.x = Math.min(Math.max(margin, event.clientX - noteEditorDragState.offsetX), maxX);
+  noteEditor.y = Math.min(Math.max(margin, event.clientY - noteEditorDragState.offsetY), maxY);
+}
+
+function stopNoteEditorDrag() {
+  noteEditorDragState = null;
+}
+
+function handleNoteEditorOutsideMouseDown() {
+  if (!noteEditor.open || noteEditor.mode === 'view') return;
+  closeNoteEditor();
+}
+
+function middleEllipsis(text, maxLength = 20) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  const chars = Array.from(normalized);
+  if (chars.length <= maxLength) return normalized;
+  const tailLength = Math.min(4, chars.length);
+  const headLength = Math.max(1, maxLength - tailLength - 3);
+  return `${chars.slice(0, headLength).join('')}...${chars.slice(-tailLength).join('')}`;
+}
+
+function questionHistorySelectionLabel(item) {
+  const selectedText = item?.context_snapshot?.selected_text || item?.context_snapshot?.selection?.selectedText || '';
+  return `「${middleEllipsis(selectedText || '课文选区')}」`;
+}
+
+function questionHistoryQuestionLabel(item) {
+  const excerpt = String(item?.last_message_excerpt || '').replace(/\s+/g, ' ').trim();
+  return excerpt || '暂无对话预览';
+}
+
+function openQuestionHistoryConversation(item) {
+  if (!item?.id) return;
+  activeQuestionConversationId.value = item.id;
+  window.dispatchEvent(new CustomEvent('assistant:open-conversation', {
+    detail: { id: item.id }
+  }));
+}
+
+function handleAssistantConversationUpdated(event) {
+  const conversation = event?.detail?.conversation;
+  if (
+    conversation?.context_type === 'text'
+    && Number(conversation.context_id) === Number(studyEntry.value?.id)
+  ) {
+    refreshQuestionHistory();
+  }
 }
 
 async function focusNote(note) {
-  editNote(note);
+  activeNoteId.value = note.id;
   await nextTick();
   const target = readingTextRef.value?.querySelector(`[data-note-ids~="${note.id}"]`);
   target?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+  await nextTick();
+  openNoteEditor(note, target?.getBoundingClientRect?.() || null);
 }
 
 async function saveNote() {
@@ -1057,7 +1512,8 @@ async function saveNote() {
       });
       notes.value = notes.value.map((note) => (Number(note.id) === Number(data.item.id) ? data.item : note));
       activeNoteId.value = data.item.id;
-      editNote(data.item);
+      noteEditor.noteId = data.item.id;
+      noteEditor.content = data.item.note_content;
       showToast('笔记已更新', 'success');
       return;
     }
@@ -1072,9 +1528,13 @@ async function saveNote() {
       }
     });
     notes.value = [...notes.value, data.item].sort((a, b) => Number(a.start_offset) - Number(b.start_offset) || Number(a.id) - Number(b.id));
-    currentSelection.value = null;
     activeNoteId.value = data.item.id;
-    editNote(data.item);
+    noteEditor.mode = 'edit';
+    noteEditor.noteId = data.item.id;
+    noteEditor.startOffset = data.item.start_offset;
+    noteEditor.endOffset = data.item.end_offset;
+    noteEditor.selectedText = data.item.selected_text;
+    noteEditor.content = data.item.note_content;
     showToast('笔记已保存', 'success');
   } catch (err) {
     handleApiError(err);
@@ -1085,6 +1545,7 @@ async function saveNote() {
 
 async function deleteActiveNote() {
   if (!noteEditor.noteId || noteSaving.value) return;
+  if (!window.confirm('确定删除这条笔记吗？')) return;
   noteSaving.value = true;
   try {
     await apiRequest(`/api/user/text-notes/${noteEditor.noteId}`, { method: 'DELETE' });
@@ -1124,25 +1585,31 @@ async function askAboutSelection() {
   }
 }
 
-function resolvePopoverPosition(anchorX, anchorY, width, height) {
-  const margin = 16;
-  const verticalGap = 16;
-  const maxX = Math.max(margin, window.innerWidth - width - margin);
-  const x = Math.min(Math.max(margin, anchorX + 14), maxX);
-  const belowY = anchorY + verticalGap;
-  const aboveY = anchorY - height - verticalGap;
-  const hasRoomBelow = belowY + height <= window.innerHeight - margin;
-  const rawY = hasRoomBelow ? belowY : aboveY;
-  const maxY = Math.max(margin, window.innerHeight - height - margin);
-  const y = Math.min(Math.max(margin, rawY), maxY);
-  return { x, y };
+function resolvePopoverPosition(anchorRect, width, height) {
+  const avoidRects = [anchorRect];
+  const noteRect = getNoteEditorRect();
+  if (noteEditor.open && noteRect) avoidRects.push(noteRect);
+  return resolveFloatingPosition(anchorRect, width, height, { gap: 12, avoidRects });
 }
 
 async function showPopover(event, segment) {
+  if (readingSelectionDragging.value) {
+    activePopover.value = null;
+    cancelHidePopover();
+    return;
+  }
   cancelHidePopover();
   const width = Math.min(segment.type === 'grammar' ? 390 : 330, window.innerWidth - 32);
   const estimatedHeight = segment.type === 'grammar' ? 290 : 210;
-  const initialPosition = resolvePopoverPosition(event.clientX, event.clientY, width, estimatedHeight);
+  const anchorRect = rectFromEventTarget(event) || {
+    left: event.clientX,
+    top: event.clientY,
+    right: event.clientX,
+    bottom: event.clientY,
+    width: 0,
+    height: 0
+  };
+  const initialPosition = resolvePopoverPosition(anchorRect, width, estimatedHeight);
   popoverPosition.x = initialPosition.x;
   popoverPosition.y = initialPosition.y;
   activePopover.value = {
@@ -1154,7 +1621,7 @@ async function showPopover(event, segment) {
   const popover = document.querySelector('.course-study-popover');
   if (!popover) return;
   const rect = popover.getBoundingClientRect();
-  const measuredPosition = resolvePopoverPosition(event.clientX, event.clientY, Math.ceil(rect.width), Math.ceil(rect.height));
+  const measuredPosition = resolvePopoverPosition(anchorRect, Math.ceil(rect.width), Math.ceil(rect.height));
   popoverPosition.x = measuredPosition.x;
   popoverPosition.y = measuredPosition.y;
 }
@@ -1282,6 +1749,12 @@ watch(courseReadingMeta, (title) => {
 
 onMounted(async () => {
   window.addEventListener('topbar:back', handleTopbarBack);
+  window.addEventListener('mouseup', finishReadingSelectionDrag);
+  window.addEventListener('touchend', finishReadingSelectionDrag);
+  window.addEventListener('mousemove', handleNoteEditorDragMove);
+  window.addEventListener('mouseup', stopNoteEditorDrag);
+  window.addEventListener('mousedown', handleNoteEditorOutsideMouseDown);
+  window.addEventListener('assistant:conversation-updated', handleAssistantConversationUpdated);
   try {
     await loadOptions();
     await refresh();
@@ -1293,7 +1766,14 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   cancelHidePopover();
+  cancelHideNotePreview();
   window.removeEventListener('topbar:back', handleTopbarBack);
+  window.removeEventListener('mouseup', finishReadingSelectionDrag);
+  window.removeEventListener('touchend', finishReadingSelectionDrag);
+  window.removeEventListener('mousemove', handleNoteEditorDragMove);
+  window.removeEventListener('mouseup', stopNoteEditorDrag);
+  window.removeEventListener('mousedown', handleNoteEditorOutsideMouseDown);
+  window.removeEventListener('assistant:conversation-updated', handleAssistantConversationUpdated);
   updateTopbarTitle('');
 });
 </script>

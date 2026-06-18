@@ -95,17 +95,24 @@ class AssistantConversation {
     return this.findById(result.lastInsertRowid)
   }
 
-  static listOwned({ userId, limit = 50, offset = 0 } = {}) {
+  static listOwned({ userId, contextType, contextId, limit = 50, offset = 0 } = {}) {
+    const normalizedContextType = normalizeContextType(contextType)
+    const normalizedContextId = contextId ? Number(contextId) : 0
     const hasUserQuestionClause = this.hasUserQuestionClause('c')
-    const where = `WHERE ${hasUserQuestionClause} AND c.user_id = ?`
+    const contextTypeClause = normalizedContextType !== 'none' ? ' AND c.context_type = ?' : ''
+    const contextIdClause = normalizedContextType !== 'none' && normalizedContextId > 0 ? ' AND c.context_id = ?' : ''
+    const where = `WHERE ${hasUserQuestionClause} AND c.user_id = ?${contextTypeClause}${contextIdClause}`
     const params = [Number(userId)]
+    if (contextTypeClause) params.push(normalizedContextType)
+    if (contextIdClause) params.push(normalizedContextId)
 
     const rows = userDb.prepare(`
       SELECT
         c.*,
         u.username AS owner_username,
         lm.content AS last_message_excerpt,
-        lm.created_at AS last_message_at
+        lm.created_at AS last_message_at,
+        fum.content AS first_user_message
       FROM assistant_conversations c
       JOIN users u ON u.id = c.user_id
       LEFT JOIN assistant_messages lm ON lm.id = (
@@ -113,6 +120,14 @@ class AssistantConversation {
         FROM assistant_messages
         WHERE conversation_id = c.id
         ORDER BY id DESC
+        LIMIT 1
+      )
+      LEFT JOIN assistant_messages fum ON fum.id = (
+        SELECT id
+        FROM assistant_messages
+        WHERE conversation_id = c.id
+          AND role = 'user'
+        ORDER BY id ASC
         LIMIT 1
       )
       ${where}

@@ -106,7 +106,21 @@
 
             <div v-if="assistantHistoryOpen" class="assistant-history-screen" @pointerdown.capture="handleAssistantHistoryPointerDown">
               <div class="assistant-history-header">
-                <strong>{{ assistantHistoryTitle }}</strong>
+                <div class="assistant-history-title-row">
+                  <strong>{{ assistantHistoryTitle }}</strong>
+                  <select
+                    v-if="assistantHistoryMode === 'own'"
+                    v-model="assistantHistoryContextFilter"
+                    class="assistant-history-filter-select"
+                    :disabled="assistantHistoryLoading"
+                    @change="handleAssistantHistoryFilterChange"
+                  >
+                    <option value="all">全部历史</option>
+                    <option value="text">课文内容提问</option>
+                    <option value="vocabulary">单词提问</option>
+                    <option value="grammar">文法提问</option>
+                  </select>
+                </div>
                 <div class="assistant-history-header-actions">
                   <div v-if="assistantHistoryTotalPages > 1" class="assistant-history-pagination">
                     <button
@@ -477,7 +491,9 @@ const assistantHistoryRows = ref([]);
 const assistantHistoryError = ref('');
 const assistantHistoryPage = ref(1);
 const assistantHistoryPageSize = 12;
+const assistantHistoryFetchBatchSize = 200;
 const assistantHistoryTotal = ref(0);
+const assistantHistoryContextFilter = ref('all');
 const assistantSharedHistoryAvailable = ref(false);
 const assistantRenameConversationId = ref(null);
 const assistantRenameDraft = ref('');
@@ -642,8 +658,15 @@ function emphasizeAssistantContextPrompt(content) {
     );
 }
 
+function normalizeAssistantMarkdown(content) {
+  return String(content || '').replace(
+    /(^|[\s([{"'“‘「『（【《])\*\*\s+((?:(?!\*\*).)*?\S)\s+\*\*/g,
+    '$1**$2**'
+  );
+}
+
 function renderAssistantMarkdown(content) {
-  return markdownRenderer.render(emphasizeAssistantContextPrompt(content));
+  return markdownRenderer.render(normalizeAssistantMarkdown(emphasizeAssistantContextPrompt(content)));
 }
 
 function escapeAssistantHtml(content) {
@@ -656,7 +679,7 @@ function escapeAssistantHtml(content) {
 }
 
 function splitStreamingMarkdown(content) {
-  const text = emphasizeAssistantContextPrompt(content);
+  const text = normalizeAssistantMarkdown(emphasizeAssistantContextPrompt(content));
   if (!text) return { rendered: '', pending: '' };
 
   const fenceMatches = [...text.matchAll(/```/g)].map((match) => match.index ?? 0);
@@ -940,11 +963,6 @@ async function loadAssistantHistory() {
   assistantHistoryLoading.value = true;
   assistantHistoryError.value = '';
   try {
-    const endpoint = mode === 'shared' ? '/api/user/assistant/conversations/shared' : '/api/user/assistant/conversations';
-    const params = {
-      limit: assistantHistoryPageSize,
-      offset: (assistantHistoryPage.value - 1) * assistantHistoryPageSize
-    };
     if (mode === 'shared') {
       const contextParams = currentAssistantContextParams();
       if (!contextParams) {
@@ -952,17 +970,70 @@ async function loadAssistantHistory() {
         assistantHistoryTotal.value = 0;
         return;
       }
-      Object.assign(params, contextParams);
+      const data = await apiRequest('/api/user/assistant/conversations/shared', {
+        params: {
+          ...contextParams,
+          limit: assistantHistoryPageSize,
+          offset: (assistantHistoryPage.value - 1) * assistantHistoryPageSize
+        },
+        timeout: 30000
+      });
+      assistantHistoryRows.value = data.rows || [];
+      assistantHistoryTotal.value = Number(data.total || 0);
+      return;
     }
-    const data = await apiRequest(endpoint, { params, timeout: 30000 });
-    assistantHistoryRows.value = data.rows || [];
-    assistantHistoryTotal.value = Number(data.total || 0);
+
+    await loadOwnedAssistantHistory();
   } catch (err) {
     assistantHistoryError.value = err instanceof ApiError ? err.message : '加载失败';
     assistantHistoryTotal.value = 0;
   } finally {
     assistantHistoryLoading.value = false;
   }
+}
+
+function assistantHistoryMatchesContextFilter(item) {
+  if (assistantHistoryContextFilter.value === 'all') return true;
+  return item?.context_type === assistantHistoryContextFilter.value;
+}
+
+async function loadOwnedAssistantHistory() {
+  if (assistantHistoryContextFilter.value === 'all') {
+    const data = await apiRequest('/api/user/assistant/conversations', {
+      params: {
+        limit: assistantHistoryPageSize,
+        offset: (assistantHistoryPage.value - 1) * assistantHistoryPageSize
+      },
+      timeout: 30000
+    });
+    assistantHistoryRows.value = data.rows || [];
+    assistantHistoryTotal.value = Number(data.total || 0);
+    return;
+  }
+
+  const rows = [];
+  let offset = 0;
+  let total = 0;
+  do {
+    const data = await apiRequest('/api/user/assistant/conversations', {
+      params: {
+        contextType: assistantHistoryContextFilter.value,
+        limit: assistantHistoryFetchBatchSize,
+        offset
+      },
+      timeout: 30000
+    });
+    const batchRows = data.rows || [];
+    rows.push(...batchRows);
+    total = Number(data.total || rows.length);
+    offset += batchRows.length;
+    if (batchRows.length < assistantHistoryFetchBatchSize) break;
+  } while (offset < total);
+
+  const filteredRows = rows.filter(assistantHistoryMatchesContextFilter);
+  const pageStart = (assistantHistoryPage.value - 1) * assistantHistoryPageSize;
+  assistantHistoryRows.value = filteredRows.slice(pageStart, pageStart + assistantHistoryPageSize);
+  assistantHistoryTotal.value = filteredRows.length;
 }
 
 async function toggleAssistantHistory() {
@@ -972,6 +1043,7 @@ async function toggleAssistantHistory() {
   }
   assistantHistoryMode.value = 'own';
   assistantHistoryPage.value = 1;
+  assistantHistoryContextFilter.value = 'all';
   assistantHistoryOpen.value = true;
   await loadAssistantHistory();
 }
@@ -993,6 +1065,11 @@ function handleAssistantHistoryBack() {
 }
 
 async function refreshAssistantHistoryView() {
+  await loadAssistantHistory();
+}
+
+async function handleAssistantHistoryFilterChange() {
+  assistantHistoryPage.value = 1;
   await loadAssistantHistory();
 }
 
@@ -2003,6 +2080,9 @@ async function sendAssistantMessage({ content, templateKey, forceWebSearch } = {
     if (assistantHistoryOpen.value) {
       await loadAssistantHistory();
     }
+    window.dispatchEvent(new CustomEvent('assistant:conversation-updated', {
+      detail: { conversation: assistantActiveConversation.value || conversation }
+    }));
   } catch (err) {
     if (Number(assistantActiveConversation.value?.id) === Number(conversation.id) && assistantMessages.value.includes(replyMessage)) {
       abortAssistantRender(replyMessage, err instanceof ApiError ? err.message : 'AI 回复失败，请稍后重试');
