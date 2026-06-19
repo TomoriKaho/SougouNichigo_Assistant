@@ -135,6 +135,22 @@ class TranslationPractice {
     return this.findOwnedById(id, userId, { includeMessages: true })
   }
 
+  static deleteOwnedById(id, userId) {
+    const practiceId = Number(id)
+    const ownerId = Number(userId)
+    const transaction = userDb.transaction(() => {
+      userDb.prepare(`
+        DELETE FROM translation_practice_messages
+        WHERE practice_id = ? AND user_id = ?
+      `).run(practiceId, ownerId)
+      return userDb.prepare(`
+        DELETE FROM translation_practices
+        WHERE id = ? AND user_id = ?
+      `).run(practiceId, ownerId)
+    })
+    return transaction().changes > 0
+  }
+
   static addMessage({ practiceId, userId, role, content }) {
     const result = userDb.prepare(`
       INSERT INTO translation_practice_messages (

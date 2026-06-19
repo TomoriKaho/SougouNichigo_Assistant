@@ -648,6 +648,12 @@ router.get('/translation-practices/:id', authMiddleware, (req, res) => {
   res.json({ item })
 })
 
+router.delete('/translation-practices/:id', authMiddleware, (req, res) => {
+  const deleted = TranslationPractice.deleteOwnedById(req.params.id, req.user.id)
+  if (!deleted) return res.status(404).json({ error: '练习记录不存在' })
+  res.json({ success: true })
+})
+
 router.post('/translation-practices/generate', authMiddleware, async (req, res) => {
   try {
     const item = await translationPracticeService.generatePractice({

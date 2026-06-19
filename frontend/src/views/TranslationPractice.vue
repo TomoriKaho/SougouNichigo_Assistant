@@ -1,5 +1,6 @@
 <template>
   <section class="card lexicon-page translation-practice-page">
+    <div v-if="toast.visible" class="toast" :class="toast.type">{{ toast.message }}</div>
     <div class="translation-practice-shell">
       <header class="translation-practice-header">
         <div class="translation-practice-title">
@@ -29,28 +30,41 @@
             <div class="translation-practice-controls translation-empty-controls">
               <label class="translation-control-book">
                 <span>课本</span>
-                <select v-model.number="selectedTextbookId">
+                <select v-model="selectedTextbookId">
+                  <option value="">请选择</option>
                   <option v-for="textbook in textbookOptions" :key="textbook.id" :value="textbook.id">
                     {{ textbook.name }}
                   </option>
                 </select>
               </label>
-              <label class="translation-control-range">
+              <div class="translation-control-range translation-slider-control">
                 <span>范围</span>
-                <select v-model="selectedRangeKey">
-                  <option v-for="range in visibleRanges" :key="range.rangeKey" :value="range.rangeKey">
+                <div class="translation-segmented-slider" role="group" aria-label="范围">
+                  <button
+                    v-for="range in rangeOptions"
+                    :key="range.rangeKey"
+                    type="button"
+                    :class="{ active: selectedRangeKey === range.rangeKey }"
+                    @click="selectedRangeKey = range.rangeKey"
+                  >
                     {{ range.rangeLabel }}
-                  </option>
-                </select>
-              </label>
-              <label class="translation-control-type">
+                  </button>
+                </div>
+              </div>
+              <div class="translation-control-type translation-slider-control">
                 <span>类型</span>
-                <select v-model="selectedDirection">
-                  <option v-for="option in directionOptions" :key="option.value" :value="option.value">
+                <div class="translation-segmented-slider" role="group" aria-label="类型">
+                  <button
+                    v-for="option in directionOptions"
+                    :key="option.value"
+                    type="button"
+                    :class="{ active: selectedDirection === option.value }"
+                    @click="selectedDirection = option.value"
+                  >
                     {{ option.label }}
-                  </option>
-                </select>
-              </label>
+                  </button>
+                </div>
+              </div>
             </div>
             <button class="translation-primary-button" type="button" :disabled="generating" @click="generatePractice">
               {{ generating ? '正在生成题目...' : '开始生成' }}
@@ -129,16 +143,29 @@
             </div>
             <div v-if="historyLoading" class="translation-side-empty">加载中...</div>
             <div v-else-if="historyRows.length" class="translation-history-list">
-              <button
+              <div
                 v-for="item in historyRows"
                 :key="item.id"
-                type="button"
+                class="translation-history-item"
                 :class="{ active: currentPractice?.id === item.id }"
-                @click="openPractice(item.id)"
               >
-                <strong>{{ item.exercise?.title || '文学翻译练习' }}</strong>
-                <span>{{ item.range_label }} / {{ item.status === 'reviewed' ? `${item.review?.score ?? '-'}分` : '未批改' }}</span>
-              </button>
+                <button
+                  class="translation-history-open"
+                  type="button"
+                  @click="openPractice(item.id)"
+                >
+                  <strong>{{ item.exercise?.title || '文学翻译练习' }}</strong>
+                  <span>{{ historyMetaLabel(item) }}</span>
+                </button>
+                <button
+                  class="translation-history-delete"
+                  type="button"
+                  :disabled="deletingPracticeId === item.id"
+                  @click="deletePractice(item)"
+                >
+                  {{ deletingPracticeId === item.id ? '删除中' : '删除' }}
+                </button>
+              </div>
             </div>
             <div v-else class="translation-side-empty">暂无记录</div>
           </section>
@@ -235,11 +262,13 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiRequest } from '../utils/apiClient';
 
+const START_SELECTION_CACHE_KEY = 'translation-practice:start-selection:v1';
+
 const ranges = ref([]);
-const selectedTextbookId = ref(0);
+const selectedTextbookId = ref('');
 const selectedRangeKey = ref('upper');
 const selectedDirection = ref('jp_to_zh');
 const currentPractice = ref(null);
@@ -249,9 +278,12 @@ const submitting = ref(false);
 const saving = ref(false);
 const historyLoading = ref(false);
 const asking = ref(false);
+const deletingPracticeId = ref(null);
 const error = ref('');
+const toast = reactive({ visible: false, message: '', type: 'info' });
 const answers = reactive({});
 const chatInput = ref('');
+let toastTimer = null;
 
 const directionOptions = [
   { value: 'jp_to_zh', label: '日译汉' },
@@ -267,8 +299,23 @@ const textbookOptions = computed(() => {
 });
 
 const visibleRanges = computed(() => {
-  const textbookId = Number(selectedTextbookId.value || textbookOptions.value[0]?.id || 0);
+  const textbookId = Number(selectedTextbookId.value || 0);
   return ranges.value.filter((range) => Number(range.textbookId) === textbookId);
+});
+
+const rangeOptions = computed(() => {
+  const source = visibleRanges.value.length ? visibleRanges.value : ranges.value;
+  const map = new Map();
+  source.forEach((range) => {
+    map.set(range.rangeKey, {
+      rangeKey: range.rangeKey,
+      rangeLabel: range.rangeLabel
+    });
+  });
+  return Array.from(map.values()).sort((left, right) => {
+    if (left.rangeKey === right.rangeKey) return 0;
+    return left.rangeKey === 'upper' ? -1 : 1;
+  });
 });
 
 const currentPracticeHeaderLabel = computed(() => {
@@ -286,12 +333,76 @@ const advancedNotes = computed(() => {
 const reviewIssues = computed(() => currentPractice.value?.review?.issues || []);
 const practiceMessages = computed(() => currentPractice.value?.messages || []);
 
+function readStartSelectionCache() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(START_SELECTION_CACHE_KEY) || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (err) {
+    return {};
+  }
+}
+
+function writeStartSelectionCache() {
+  try {
+    localStorage.setItem(START_SELECTION_CACHE_KEY, JSON.stringify({
+      textbookId: selectedTextbookId.value || '',
+      rangeKey: selectedRangeKey.value || 'upper',
+      direction: selectedDirection.value || 'jp_to_zh'
+    }));
+  } catch (err) {
+    // localStorage may be unavailable in private or restricted browser contexts.
+  }
+}
+
+function restoreStartSelectionCache() {
+  const cached = readStartSelectionCache();
+  const cachedTextbookId = Number(cached.textbookId || 0);
+  const hasCachedTextbook = textbookOptions.value.some((textbook) => Number(textbook.id) === cachedTextbookId);
+  if (hasCachedTextbook) {
+    selectedTextbookId.value = cachedTextbookId;
+  }
+
+  const availableRanges = hasCachedTextbook
+    ? ranges.value.filter((range) => Number(range.textbookId) === cachedTextbookId)
+    : ranges.value;
+  if (availableRanges.some((range) => range.rangeKey === cached.rangeKey)) {
+    selectedRangeKey.value = cached.rangeKey;
+  }
+
+  if (directionOptions.some((option) => option.value === cached.direction)) {
+    selectedDirection.value = cached.direction;
+  }
+}
+
 function clearError() {
   error.value = '';
 }
 
+function showToast(message, type = 'info') {
+  toast.message = message;
+  toast.type = type;
+  toast.visible = true;
+  if (toastTimer) window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    toast.visible = false;
+    toastTimer = null;
+  }, 1600);
+}
+
 function directionLabel(direction) {
   return direction === 'zh_to_jp' ? '汉译日' : '日译汉';
+}
+
+function shortTextbookName(name) {
+  const text = String(name || '');
+  const match = text.match(/第[一二三四五六七八九十\d]+册/);
+  return match ? match[0] : (text || '第四册');
+}
+
+function historyMetaLabel(item) {
+  const direction = directionLabel(item?.exercise?.items?.[0]?.direction || selectedDirection.value);
+  const status = item?.status === 'reviewed' ? '已批改' : '未提交';
+  return `${shortTextbookName(item?.textbook_name)}/${direction}/${item?.range_label || '-'} ${status}`;
 }
 
 function targetGrammarForItem(item) {
@@ -336,12 +447,7 @@ function returnToPracticeHome() {
 async function loadOptions() {
   const data = await apiRequest('/api/user/translation-practice/options');
   ranges.value = data.ranges || [];
-  if (textbookOptions.value.length && !selectedTextbookId.value) {
-    selectedTextbookId.value = textbookOptions.value[0].id;
-  }
-  if (visibleRanges.value.length && !visibleRanges.value.some((item) => item.rangeKey === selectedRangeKey.value)) {
-    selectedRangeKey.value = visibleRanges.value[0].rangeKey;
-  }
+  restoreStartSelectionCache();
 }
 
 async function loadHistory() {
@@ -369,7 +475,34 @@ async function openPractice(id) {
   }
 }
 
+async function deletePractice(item) {
+  if (!item?.id || deletingPracticeId.value) return;
+  const title = item.exercise?.title || '这条练习记录';
+  if (!window.confirm(`确定删除「${title}」吗？删除后无法恢复。`)) return;
+  deletingPracticeId.value = item.id;
+  error.value = '';
+  try {
+    await apiRequest(`/api/user/translation-practices/${item.id}`, {
+      method: 'DELETE',
+      timeout: 30000
+    });
+    if (currentPractice.value?.id === item.id) {
+      returnToPracticeHome();
+    }
+    await loadHistory();
+  } catch (err) {
+    error.value = err.message || '删除练习记录失败';
+  } finally {
+    deletingPracticeId.value = null;
+  }
+}
+
 async function generatePractice() {
+  if (!selectedTextbookId.value) {
+    error.value = '';
+    showToast('请先选择课本', 'error');
+    return;
+  }
   generating.value = true;
   error.value = '';
   try {
@@ -461,4 +594,9 @@ onMounted(async () => {
     error.value = err.message || '初始化翻译练习失败';
   }
 });
+
+watch(
+  [selectedTextbookId, selectedRangeKey, selectedDirection],
+  writeStartSelectionCache
+);
 </script>
