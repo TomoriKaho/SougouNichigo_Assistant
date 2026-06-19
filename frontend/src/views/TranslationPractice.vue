@@ -1,6 +1,16 @@
 <template>
   <section class="card lexicon-page translation-practice-page">
     <div v-if="toast.visible" class="toast" :class="toast.type">{{ toast.message }}</div>
+    <div
+      v-if="issuePopover.visible"
+      class="translation-issue-popover"
+      :class="issuePopover.severity === 'serious' ? 'is-serious' : 'is-minor'"
+      :style="{ left: `${issuePopover.x}px`, top: `${issuePopover.y}px`, maxHeight: `${issuePopover.maxHeight}px` }"
+    >
+      <strong>{{ issuePopover.title }}</strong>
+      <p>{{ issuePopover.body }}</p>
+      <em v-if="issuePopover.suggestion">{{ issuePopover.suggestion }}</em>
+    </div>
     <div class="translation-practice-shell">
       <header class="translation-practice-header">
         <div class="translation-practice-title">
@@ -65,6 +75,20 @@
                   </button>
                 </div>
               </div>
+              <div class="translation-control-difficulty translation-slider-control">
+                <span>难度</span>
+                <div class="translation-segmented-slider" role="group" aria-label="难度">
+                  <button
+                    v-for="option in difficultyOptions"
+                    :key="option.value"
+                    type="button"
+                    :class="{ active: selectedDifficulty === option.value }"
+                    @click="selectedDifficulty = option.value"
+                  >
+                    {{ option.label }}
+                  </button>
+                </div>
+              </div>
             </div>
             <button class="translation-primary-button" type="button" :disabled="generating" @click="generatePractice">
               {{ generating ? '正在生成题目...' : '开始生成' }}
@@ -105,16 +129,35 @@
                 <p class="translation-prompt-text">{{ item.prompt_text }}</p>
                 <div class="translation-answer-box">
                   <textarea
+                    v-if="currentPractice.status !== 'reviewed'"
                     v-model="answers[item.id]"
-                    :disabled="currentPractice.status === 'reviewed' || submitting || saving"
+                    :disabled="submitting || saving"
                     rows="5"
                     placeholder="在这里输入你的译文"
                   ></textarea>
-                  <div class="translation-answer-actions">
+                  <div v-else class="translation-reviewed-answer">
+                    <template
+                      v-for="(segment, index) in answerSegmentsForItem(item)"
+                      :key="`${item.id}-answer-${index}`"
+                    >
+                      <span
+                        v-if="segment.issue"
+                        class="translation-answer-issue"
+                        :class="segment.issue.severity === 'serious' ? 'is-serious' : 'is-minor'"
+                        :data-tooltip="issueTooltip(segment.issue)"
+                        @mouseenter="showIssuePopover($event, segment.issue)"
+                        @mouseover="showIssuePopover($event, segment.issue)"
+                        @mousemove="showIssuePopover($event, segment.issue)"
+                        @mouseleave="hideIssuePopover"
+                      >{{ segment.text }}</span>
+                      <span v-else>{{ segment.text }}</span>
+                    </template>
+                  </div>
+                  <div v-if="currentPractice.status !== 'reviewed'" class="translation-answer-actions">
                     <button
                       class="ghost"
                       type="button"
-                      :disabled="currentPractice.status === 'reviewed' || submitting || saving"
+                      :disabled="submitting || saving"
                       @click="savePracticeAnswers"
                     >
                       {{ saving ? '保存中...' : '保存' }}
@@ -122,10 +165,10 @@
                     <button
                       class="translation-primary-button"
                       type="button"
-                      :disabled="currentPractice.status === 'reviewed' || submitting || saving"
+                      :disabled="submitting || saving"
                       @click="submitPractice"
                     >
-                      {{ submitting ? '提交中...' : '提交' }}
+                      {{ submitting ? '批改中...' : '提交' }}
                     </button>
                   </div>
                 </div>
@@ -176,73 +219,39 @@
               <span>当前练习上下文</span>
             </div>
             <div class="translation-work-body">
-              <div v-if="currentPractice.review" class="translation-side-review">
-                <div class="translation-score-block">
-                  <div>
-                    <span>综合评分</span>
-                    <strong>{{ currentPractice.review.score }}</strong>
-                  </div>
-                  <p>{{ currentPractice.review.summary }}</p>
-                </div>
-
-                <div class="translation-dimension-grid">
-                  <article v-for="dimension in currentPractice.review.dimensions" :key="dimension.label">
-                    <span>{{ dimension.label }}</span>
-                    <strong>{{ dimension.score }}</strong>
-                    <p>{{ dimension.comment }}</p>
-                  </article>
-                </div>
-
-                <div class="translation-issue-list">
-                  <h3>问题标注</h3>
-                  <div v-if="reviewIssues.length" class="translation-issues">
-                    <article
-                      v-for="(issue, index) in reviewIssues"
-                      :key="`${issue.item_id}-${issue.quote}-${index}`"
-                      :class="issue.severity === 'serious' ? 'is-serious' : 'is-minor'"
-                    >
-                      <div>
-                        <strong>{{ issue.severity === 'serious' ? '严重问题' : '小问题' }}</strong>
-                        <span>{{ issue.category }}</span>
-                      </div>
-                      <p v-if="issue.quote" class="translation-issue-quote">{{ issue.quote }}</p>
-                      <p>{{ issue.explanation }}</p>
-                      <em>{{ issue.suggestion }}</em>
-                    </article>
-                  </div>
-                  <p v-else class="muted">本次没有明显问题。</p>
-                </div>
-
-                <div class="translation-corrections">
-                  <h3>参考与建议</h3>
-                  <article v-for="answer in currentPractice.review.corrected_answers" :key="answer.item_id">
-                    <span>{{ answer.item_id === 'jp_zh' ? '日译汉' : '汉译日' }}</span>
-                    <p>{{ answer.revised_answer || answer.reference_answer }}</p>
-                    <small>{{ answer.comment }}</small>
-                  </article>
-                </div>
+              <div v-if="currentPractice.review || submitting" class="translation-review-message">
+                <article class="is-assistant">
+                  <p v-if="submitting && !currentPractice.review" class="translation-thinking-text">正在批改中...</p>
+                  <div
+                    v-else
+                    class="translation-review-markdown"
+                    v-html="reviewMarkdownHtml"
+                  ></div>
+                </article>
               </div>
 
               <div class="translation-chat-body">
-                <div v-if="practiceMessages.length" class="translation-chat-messages">
+                <div v-if="practiceMessages.length" ref="chatMessagesEl" class="translation-chat-messages">
                   <article
                     v-for="message in practiceMessages"
                     :key="message.id"
                     :class="message.role === 'assistant' ? 'is-assistant' : 'is-user'"
                   >
-                    <p>{{ message.content }}</p>
+                    <p v-if="message.phase === 'thinking'" class="translation-thinking-text">思考中...</p>
+                    <p v-else>{{ message.content }}</p>
                   </article>
                 </div>
               </div>
             </div>
-            <div v-if="!currentPractice.review || !practiceMessages.length" class="translation-work-hints">
-              <p v-if="!currentPractice.review">提交后会在这里显示批改结果。</p>
+            <div v-if="(!currentPractice.review && !submitting) || !practiceMessages.length" class="translation-work-hints">
+              <p v-if="!currentPractice.review && !submitting">提交后会在这里显示批改结果。</p>
               <p v-if="!practiceMessages.length">完成或查看练习后，可以在这里继续追问。</p>
             </div>
             <form class="translation-chat-form" @submit.prevent="askPractice">
               <textarea
                 v-model.trim="chatInput"
                 :disabled="asking"
+                maxlength="1000"
                 rows="3"
                 placeholder="针对本次题目或批改结果继续提问"
               ></textarea>
@@ -262,15 +271,22 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
+import MarkdownIt from 'markdown-it';
 import { apiRequest } from '../utils/apiClient';
 
 const START_SELECTION_CACHE_KEY = 'translation-practice:start-selection:v1';
+const reviewMarkdownRenderer = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true
+});
 
 const ranges = ref([]);
 const selectedTextbookId = ref('');
 const selectedRangeKey = ref('upper');
 const selectedDirection = ref('jp_to_zh');
+const selectedDifficulty = ref('normal');
 const currentPractice = ref(null);
 const historyRows = ref([]);
 const generating = ref(false);
@@ -281,13 +297,29 @@ const asking = ref(false);
 const deletingPracticeId = ref(null);
 const error = ref('');
 const toast = reactive({ visible: false, message: '', type: 'info' });
+const issuePopover = reactive({
+  visible: false,
+  x: 0,
+  y: 0,
+  maxHeight: 180,
+  severity: 'minor',
+  title: '',
+  body: '',
+  suggestion: ''
+});
 const answers = reactive({});
 const chatInput = ref('');
+const chatMessagesEl = ref(null);
 let toastTimer = null;
 
 const directionOptions = [
   { value: 'jp_to_zh', label: '日译汉' },
   { value: 'zh_to_jp', label: '汉译日' }
+];
+
+const difficultyOptions = [
+  { value: 'normal', label: '普通' },
+  { value: 'hard', label: '困难' }
 ];
 
 const textbookOptions = computed(() => {
@@ -332,6 +364,133 @@ const advancedNotes = computed(() => {
 });
 const reviewIssues = computed(() => currentPractice.value?.review?.issues || []);
 const practiceMessages = computed(() => currentPractice.value?.messages || []);
+const reviewMarkdownSource = computed(() => {
+  const review = currentPractice.value?.review;
+  if (!review) return '';
+  const lines = [];
+  if (Number.isFinite(Number(review.score))) {
+    lines.push(`### 综合评分：${review.score}`);
+  }
+  if (review.summary) {
+    lines.push(`**总体评价**：${review.summary}`);
+  }
+
+  const dimensions = Array.isArray(review.dimensions) ? review.dimensions : [];
+  if (dimensions.length) {
+    lines.push('#### 维度评价');
+    dimensions.forEach((dimension) => {
+      const score = Number.isFinite(Number(dimension?.score)) ? `（${dimension.score}分）` : '';
+      const label = dimension?.label || '评价';
+      const comment = dimension?.comment || '';
+      if (comment || score) {
+        lines.push(`- **${label}${score}**：${comment}`);
+      }
+    });
+  }
+
+  const grammarFocus = Array.isArray(review.grammar_focus) ? review.grammar_focus : [];
+  if (grammarFocus.length) {
+    lines.push('#### 目标文法');
+    grammarFocus.forEach((item) => {
+      const status = item?.ok === false ? '需注意' : '处理较好';
+      if (item?.grammar || item?.comment) {
+        lines.push(`- **${item?.grammar || '-'}**：${status}。${item?.comment || ''}`.trim());
+      }
+    });
+  }
+
+  const corrected = Array.isArray(review.corrected_answers) ? review.corrected_answers : [];
+  if (corrected.length) {
+    lines.push('#### 参考与建议');
+    corrected.forEach((answer) => {
+      const revised = answer?.revised_answer || answer?.reference_answer;
+      if (revised) {
+        lines.push(`- ${revised}${answer?.comment ? `\n  - ${answer.comment}` : ''}`);
+      }
+    });
+  }
+
+  const nextSteps = Array.isArray(review.next_steps) ? review.next_steps.filter(Boolean) : [];
+  if (nextSteps.length) {
+    lines.push('#### 下一步');
+    nextSteps.forEach((step) => {
+      lines.push(`- ${step}`);
+    });
+  }
+
+  return lines.join('\n\n');
+});
+const reviewMarkdownHtml = computed(() => reviewMarkdownRenderer.render(reviewMarkdownSource.value));
+
+function answerSegmentsForItem(item) {
+  const answerText = String(answers[item?.id] || '');
+  if (!answerText) return [{ text: '', issue: null }];
+  const issues = (currentPractice.value?.review?.issues || [])
+    .filter((issue) => {
+      const issueItemId = String(issue?.item_id || '');
+      return (!issueItemId || issueItemId === item?.id) && String(issue?.quote || '').trim();
+    })
+    .map((issue) => ({
+      ...issue,
+      quote: String(issue.quote || '').trim()
+    }));
+  if (!issues.length) return [{ text: answerText, issue: null }];
+
+  const ranges = [];
+  issues.forEach((issue) => {
+    const start = answerText.indexOf(issue.quote);
+    if (start < 0) return;
+    const end = start + issue.quote.length;
+    if (ranges.some((range) => start < range.end && end > range.start)) return;
+    ranges.push({ start, end, issue });
+  });
+  ranges.sort((left, right) => left.start - right.start);
+  if (!ranges.length) return [{ text: answerText, issue: null }];
+
+  const segments = [];
+  let cursor = 0;
+  ranges.forEach((range) => {
+    if (range.start > cursor) {
+      segments.push({ text: answerText.slice(cursor, range.start), issue: null });
+    }
+    segments.push({ text: answerText.slice(range.start, range.end), issue: range.issue });
+    cursor = range.end;
+  });
+  if (cursor < answerText.length) {
+    segments.push({ text: answerText.slice(cursor), issue: null });
+  }
+  return segments;
+}
+
+function issueTooltip(issue) {
+  const severity = issue?.severity === 'serious' ? '严重问题' : '小问题';
+  return [
+    `${severity}${issue?.category ? ` / ${issue.category}` : ''}`,
+    issue?.explanation,
+    issue?.suggestion ? `建议：${issue.suggestion}` : ''
+  ].filter(Boolean).join('\n');
+}
+
+function showIssuePopover(event, issue) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const width = 280;
+  const margin = 12;
+  const x = Math.min(Math.max(rect.left, margin), window.innerWidth - width - margin);
+  const y = Math.min(rect.bottom + 8, window.innerHeight - 72);
+  const maxHeight = Math.max(72, window.innerHeight - y - margin);
+  issuePopover.visible = true;
+  issuePopover.x = x;
+  issuePopover.y = y;
+  issuePopover.maxHeight = maxHeight;
+  issuePopover.severity = issue?.severity === 'serious' ? 'serious' : 'minor';
+  issuePopover.title = `${issuePopover.severity === 'serious' ? '严重问题' : '小问题'}${issue?.category ? ` / ${issue.category}` : ''}`;
+  issuePopover.body = String(issue?.explanation || '').trim();
+  issuePopover.suggestion = issue?.suggestion ? `建议：${issue.suggestion}` : '';
+}
+
+function hideIssuePopover() {
+  issuePopover.visible = false;
+}
 
 function readStartSelectionCache() {
   try {
@@ -347,7 +506,8 @@ function writeStartSelectionCache() {
     localStorage.setItem(START_SELECTION_CACHE_KEY, JSON.stringify({
       textbookId: selectedTextbookId.value || '',
       rangeKey: selectedRangeKey.value || 'upper',
-      direction: selectedDirection.value || 'jp_to_zh'
+      direction: selectedDirection.value || 'jp_to_zh',
+      difficulty: selectedDifficulty.value || 'normal'
     }));
   } catch (err) {
     // localStorage may be unavailable in private or restricted browser contexts.
@@ -371,6 +531,9 @@ function restoreStartSelectionCache() {
 
   if (directionOptions.some((option) => option.value === cached.direction)) {
     selectedDirection.value = cached.direction;
+  }
+  if (difficultyOptions.some((option) => option.value === cached.difficulty)) {
+    selectedDifficulty.value = cached.difficulty;
   }
 }
 
@@ -435,6 +598,15 @@ function setCurrentPractice(item) {
   const savedAnswers = item?.answer || {};
   (item?.exercise?.items || []).forEach((exerciseItem) => {
     answers[exerciseItem.id] = savedAnswers[exerciseItem.id] || '';
+  });
+}
+
+function scrollChatToBottom() {
+  nextTick(() => {
+    const el = chatMessagesEl.value;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
   });
 }
 
@@ -511,7 +683,8 @@ async function generatePractice() {
       body: {
         textbook_id: selectedTextbookId.value,
         range_key: selectedRangeKey.value,
-        direction_mode: selectedDirection.value
+        direction_mode: selectedDirection.value,
+        difficulty_mode: selectedDifficulty.value
       },
       timeout: 120000
     });
@@ -527,8 +700,11 @@ async function generatePractice() {
 async function submitPractice() {
   if (!currentPractice.value?.id) return;
   submitting.value = true;
+  saving.value = true;
   error.value = '';
   try {
+    await persistPracticeAnswers({ refreshHistory: false, ignoreSavingGuard: true });
+    saving.value = false;
     const data = await apiRequest(`/api/user/translation-practices/${currentPractice.value.id}/submit`, {
       method: 'POST',
       body: { answers: { ...answers } },
@@ -540,7 +716,22 @@ async function submitPractice() {
     error.value = err.message || '批改翻译练习失败';
   } finally {
     submitting.value = false;
+    saving.value = false;
   }
+}
+
+async function persistPracticeAnswers({ refreshHistory = true, ignoreSavingGuard = false } = {}) {
+  if (!currentPractice.value?.id || (saving.value && !ignoreSavingGuard)) return;
+  const data = await apiRequest(`/api/user/translation-practices/${currentPractice.value.id}/answers`, {
+    method: 'PATCH',
+    body: { answers: { ...answers } },
+    timeout: 30000
+  });
+  setCurrentPractice(data.item);
+  if (refreshHistory) {
+    await loadHistory();
+  }
+  return data.item;
 }
 
 async function savePracticeAnswers() {
@@ -548,13 +739,7 @@ async function savePracticeAnswers() {
   saving.value = true;
   error.value = '';
   try {
-    const data = await apiRequest(`/api/user/translation-practices/${currentPractice.value.id}/answers`, {
-      method: 'PATCH',
-      body: { answers: { ...answers } },
-      timeout: 30000
-    });
-    setCurrentPractice(data.item);
-    await loadHistory();
+    await persistPracticeAnswers();
   } catch (err) {
     error.value = err.message || '保存翻译答案失败';
   } finally {
@@ -565,9 +750,30 @@ async function savePracticeAnswers() {
 async function askPractice() {
   if (!currentPractice.value?.id || !chatInput.value || asking.value) return;
   const content = chatInput.value;
+  const previousMessages = [...practiceMessages.value];
+  const time = Date.now();
+  const optimisticMessages = [
+    ...previousMessages,
+    {
+      id: `local-user-${time}`,
+      role: 'user',
+      content
+    },
+    {
+      id: `local-assistant-${time}`,
+      role: 'assistant',
+      content: '',
+      phase: 'thinking'
+    }
+  ];
   asking.value = true;
   error.value = '';
   chatInput.value = '';
+  currentPractice.value = {
+    ...currentPractice.value,
+    messages: optimisticMessages
+  };
+  scrollChatToBottom();
   try {
     const data = await apiRequest(`/api/user/translation-practices/${currentPractice.value.id}/messages`, {
       method: 'POST',
@@ -578,8 +784,13 @@ async function askPractice() {
       ...currentPractice.value,
       messages: data.messages || []
     };
+    scrollChatToBottom();
   } catch (err) {
     chatInput.value = content;
+    currentPractice.value = {
+      ...currentPractice.value,
+      messages: previousMessages
+    };
     error.value = err.message || '追问失败';
   } finally {
     asking.value = false;
@@ -596,7 +807,7 @@ onMounted(async () => {
 });
 
 watch(
-  [selectedTextbookId, selectedRangeKey, selectedDirection],
+  [selectedTextbookId, selectedRangeKey, selectedDirection, selectedDifficulty],
   writeStartSelectionCache
 );
 </script>

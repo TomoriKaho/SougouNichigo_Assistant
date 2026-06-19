@@ -5824,6 +5824,61 @@ button.warning:hover {
   background: var(--theme-red-dark);
 }
 
+.translation-issue-popover {
+  position: fixed;
+  z-index: 2147483647;
+  width: 280px;
+  max-width: calc(100vw - 24px);
+  padding: 10px 11px;
+  border: 1px solid rgba(189, 164, 136, 0.85);
+  border-radius: 10px;
+  background: #fffef8;
+  color: #34251f;
+  box-shadow: 0 14px 30px rgba(76, 48, 35, 0.2);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-y: auto;
+  overflow-x: hidden;
+  pointer-events: none;
+}
+
+.translation-issue-popover.is-serious {
+  border-color: rgba(220, 38, 38, 0.42);
+}
+
+.translation-issue-popover.is-minor {
+  border-color: rgba(22, 163, 74, 0.38);
+}
+
+.translation-issue-popover strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #4c3023;
+  font-weight: 900;
+}
+
+.translation-issue-popover.is-serious strong {
+  color: #c51f28;
+}
+
+.translation-issue-popover.is-minor strong {
+  color: #15803d;
+}
+
+.translation-issue-popover p,
+.translation-issue-popover em {
+  display: block;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.translation-issue-popover em {
+  margin-top: 5px;
+  color: #5b4638;
+  font-style: normal;
+  font-weight: 800;
+}
+
 .translation-practice-grid {
   flex: 1;
   min-height: 0;
@@ -6129,6 +6184,48 @@ button.warning:hover {
   overflow: auto;
 }
 
+.translation-reviewed-answer {
+  flex: 1 1 auto;
+  min-height: 180px;
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(189, 164, 136, 0.78);
+  border-radius: 10px;
+  background: #fffdf8;
+  color: #34251f;
+  font: inherit;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow: auto;
+}
+
+.translation-answer-issue {
+  position: relative;
+  border-radius: 3px;
+  cursor: help;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.translation-answer-issue.is-serious {
+  background: rgba(220, 38, 38, 0.12);
+  color: #9f141b;
+  text-decoration-line: underline;
+  text-decoration-color: rgba(220, 38, 38, 0.72);
+}
+
+.translation-answer-issue.is-minor {
+  background: rgba(22, 163, 74, 0.12);
+  color: #116a35;
+  text-decoration-line: underline;
+  text-decoration-color: rgba(22, 163, 74, 0.72);
+}
+
+.translation-answer-issue:hover {
+  z-index: 8;
+}
+
 .translation-answer-actions {
   position: absolute;
   right: 10px;
@@ -6307,7 +6404,8 @@ button.warning:hover {
   flex-direction: column;
   gap: 10px;
   padding-top: 10px;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .translation-side-review {
@@ -6316,6 +6414,83 @@ button.warning:hover {
   display: grid;
   gap: 10px;
   overflow: hidden;
+}
+
+.translation-review-message {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 10px 0 2px;
+  overflow: visible;
+}
+
+.translation-review-message article {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 10px 11px;
+  border: 1px solid rgba(222, 207, 188, 0.8);
+  border-radius: 12px;
+  background: #fff;
+  color: #34251f;
+}
+
+.translation-review-message p {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.65;
+}
+
+.translation-review-markdown {
+  min-width: 0;
+  color: #34251f;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.translation-review-markdown h3,
+.translation-review-markdown h4 {
+  margin: 10px 0 5px;
+  color: var(--theme-red-dark);
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+
+.translation-review-markdown h3:first-child,
+.translation-review-markdown h4:first-child {
+  margin-top: 0;
+}
+
+.translation-review-markdown h3 {
+  font-size: 14.5px;
+  font-weight: 900;
+}
+
+.translation-review-markdown h4 {
+  padding-top: 7px;
+  border-top: 1px solid rgba(222, 207, 188, 0.68);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.translation-review-markdown p,
+.translation-review-markdown ul {
+  margin: 0 0 7px;
+}
+
+.translation-review-markdown ul {
+  display: grid;
+  gap: 5px;
+  padding-left: 16px;
+}
+
+.translation-review-markdown li {
+  padding-left: 1px;
+}
+
+.translation-review-markdown strong {
+  color: #4c3023;
+  font-weight: 900;
 }
 
 .translation-work-panel .translation-score-block {
@@ -6484,12 +6659,12 @@ button.warning:hover {
 }
 
 .translation-chat-body {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   padding: 10px 0;
 }
 
 .translation-work-panel .translation-chat-body {
-  overflow-y: auto;
+  overflow: visible;
 }
 
 .translation-work-hints {
@@ -6546,6 +6721,11 @@ button.warning:hover {
   border: 1px solid rgba(222, 207, 188, 0.8);
   background: #fff;
   color: #34251f;
+}
+
+.translation-thinking-text {
+  color: #8a6d5b;
+  font-weight: 800;
 }
 
 .translation-chat-messages p {

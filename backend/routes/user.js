@@ -659,7 +659,8 @@ router.post('/translation-practices/generate', authMiddleware, async (req, res) 
     const item = await translationPracticeService.generatePractice({
       userId: req.user.id,
       rangeKey: req.body.range_key || req.body.rangeKey || 'upper',
-      directionMode: req.body.direction_mode || req.body.directionMode || 'jp_to_zh'
+      directionMode: req.body.direction_mode || req.body.directionMode || 'jp_to_zh',
+      difficultyMode: req.body.difficulty_mode || req.body.difficultyMode || 'normal'
     })
     res.status(201).json({ item })
   } catch (error) {

@@ -88,17 +88,18 @@ function chatRequestBody({ messages, enableSearch = false, forcedSearch = false,
   return { config, body }
 }
 
-async function fetchChatResponse({ messages, enableSearch = false, forcedSearch = false, stream = true, maxTokens } = {}) {
+async function fetchChatResponse({ messages, enableSearch = false, forcedSearch = false, stream = true, maxTokens, timeoutMs } = {}) {
   const { config, body } = chatRequestBody({ messages, enableSearch, forcedSearch, stream })
   const tokenLimit = Number(maxTokens || getEnv('AI_MAX_TOKENS', ''))
   if (Number.isFinite(tokenLimit) && tokenLimit > 0) {
     body.max_tokens = Math.floor(tokenLimit)
   }
   const controller = new AbortController()
-  const timeoutMs = Number.isFinite(config.requestTimeoutMs) && config.requestTimeoutMs > 0
-    ? config.requestTimeoutMs
+  const configuredTimeoutMs = Number(timeoutMs || config.requestTimeoutMs)
+  const requestTimeoutMs = Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
+    ? configuredTimeoutMs
     : 45000
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const timer = setTimeout(() => controller.abort(), requestTimeoutMs)
   let response
 
   try {
@@ -124,15 +125,15 @@ async function fetchChatResponse({ messages, enableSearch = false, forcedSearch 
   return response
 }
 
-async function completeChatOnce({ messages, enableSearch = false, forcedSearch = false, maxTokens } = {}) {
-  const response = await fetchChatResponse({ messages, enableSearch, forcedSearch, stream: false, maxTokens })
+async function completeChatOnce({ messages, enableSearch = false, forcedSearch = false, maxTokens, timeoutMs } = {}) {
+  const response = await fetchChatResponse({ messages, enableSearch, forcedSearch, stream: false, maxTokens, timeoutMs })
   return parseNonStreamingResponse(response)
 }
 
-async function completeChat({ messages, enableSearch = false, forcedSearch = false, maxTokens } = {}) {
+async function completeChat({ messages, enableSearch = false, forcedSearch = false, maxTokens, timeoutMs } = {}) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      return await completeChatOnce({ messages, enableSearch, forcedSearch, maxTokens })
+      return await completeChatOnce({ messages, enableSearch, forcedSearch, maxTokens, timeoutMs })
     } catch (error) {
       if (attempt === 1 || !isRetriableProviderError(error)) {
         throw normalizeProviderError(error)
@@ -143,8 +144,8 @@ async function completeChat({ messages, enableSearch = false, forcedSearch = fal
   return ''
 }
 
-async function* streamChatOnce({ messages, enableSearch = false, forcedSearch = false, maxTokens } = {}) {
-  const response = await fetchChatResponse({ messages, enableSearch, forcedSearch, stream: true, maxTokens })
+async function* streamChatOnce({ messages, enableSearch = false, forcedSearch = false, maxTokens, timeoutMs } = {}) {
+  const response = await fetchChatResponse({ messages, enableSearch, forcedSearch, stream: true, maxTokens, timeoutMs })
 
   const contentType = response.headers.get('content-type') || ''
   if (!response.body || !contentType.includes('stream')) {
@@ -190,13 +191,13 @@ async function* streamChatOnce({ messages, enableSearch = false, forcedSearch = 
   }
 }
 
-async function* streamChat({ messages, enableSearch = false, forcedSearch = false, maxTokens } = {}) {
+async function* streamChat({ messages, enableSearch = false, forcedSearch = false, maxTokens, timeoutMs } = {}) {
   let lastError = null
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     let emitted = false
     try {
-      for await (const delta of streamChatOnce({ messages, enableSearch, forcedSearch, maxTokens })) {
+      for await (const delta of streamChatOnce({ messages, enableSearch, forcedSearch, maxTokens, timeoutMs })) {
         emitted = true
         yield delta
       }
@@ -213,7 +214,7 @@ async function* streamChat({ messages, enableSearch = false, forcedSearch = fals
   }
 
   try {
-    const fullText = await completeChatOnce({ messages, enableSearch, forcedSearch, maxTokens })
+    const fullText = await completeChatOnce({ messages, enableSearch, forcedSearch, maxTokens, timeoutMs })
     if (fullText) yield fullText
   } catch (error) {
     throw normalizeProviderError(lastError || error)
