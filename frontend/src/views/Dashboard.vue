@@ -180,23 +180,28 @@
     </div>
 
     <div v-if="!isPrivileged" class="dashboard-user-footer">
-      <a
-        class="dashboard-user-link"
-        href="https://tomorikaho.github.io/SounichiNavi/"
-        target="_blank"
-        rel="noreferrer"
-      >
-        查看文档
-      </a>
-      <button class="dashboard-user-link" type="button" @click="openContact">联系开发者</button>
-      <a
-        class="dashboard-user-link"
-        href="https://github.com/TomoriKaho/SounichiNavi"
-        target="_blank"
-        rel="noreferrer"
-      >
-        参与开发
-      </a>
+      <div class="dashboard-user-footer-links">
+        <a
+          class="dashboard-user-link"
+          href="https://tomorikaho.github.io/SounichiNavi/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          查看文档
+        </a>
+        <button class="dashboard-user-link" type="button" @click="openContact">联系开发者</button>
+        <a
+          class="dashboard-user-link"
+          href="https://github.com/TomoriKaho/SounichiNavi"
+          target="_blank"
+          rel="noreferrer"
+        >
+          参与开发
+        </a>
+      </div>
+      <p class="dashboard-user-disclaimer">
+        本站资源仅供学习与交流使用，请勿用于任何商业用途；如有侵权或不当内容，请联系开发者处理。
+      </p>
     </div>
 
     <div v-if="contactOpen" class="overlay">

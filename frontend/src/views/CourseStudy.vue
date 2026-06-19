@@ -387,7 +387,7 @@
 
     <div v-if="toast.visible" class="toast" :class="toast.type">{{ toast.message }}</div>
   </section>
-  <div class="study-page-floating-note">如有错误信息，请联系管理员进行修正。</div>
+  <div class="study-page-floating-note">如有错误内容，请联系管理员进行修正。</div>
 </template>
 
 <script setup>

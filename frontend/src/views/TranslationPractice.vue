@@ -172,7 +172,7 @@
 
           <section v-else class="translation-work-panel translation-combined-panel">
             <div class="translation-side-header">
-              <h3>批改与追问</h3>
+              <h3>提问、批改与追问</h3>
               <span>当前练习上下文</span>
             </div>
             <div class="translation-work-body">

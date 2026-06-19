@@ -1672,9 +1672,18 @@ textarea:disabled {
   margin-top: 0;
   padding: 8px 4px 0;
   display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+}
+
+.dashboard-user-footer-links {
+  display: flex;
   justify-content: center;
   align-items: center;
   gap: 18px;
+  flex-wrap: wrap;
 }
 
 .dashboard-user-link {
@@ -1696,6 +1705,16 @@ textarea:disabled {
   box-shadow: none;
   filter: none;
   transform: none;
+}
+
+.dashboard-user-disclaimer {
+  max-width: 720px;
+  margin: 0;
+  color: #9a8f8a;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .dashboard-contact-modal {
@@ -2400,6 +2419,10 @@ button.assignment-return-button:hover {
 
   .dashboard-user-footer {
     padding-top: 14px;
+    gap: 8px;
+  }
+
+  .dashboard-user-footer-links {
     gap: 14px;
   }
 }
