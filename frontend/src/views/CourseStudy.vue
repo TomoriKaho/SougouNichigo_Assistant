@@ -188,6 +188,8 @@
           <div v-else class="course-tool-empty">暂无提问历史</div>
         </section>
 
+        <p class="course-context-question-hint">无需课文上下文的问题，建议直接在AI助手提问</p>
+
         <section class="course-tool-section course-marker-filter-section">
           <div class="course-tool-section-header">
             <h2>标记过滤</h2>

@@ -3935,7 +3935,7 @@ button.assignment-return-button:hover {
 }
 
 .course-marker-filter-section {
-  margin-top: auto;
+  margin-top: 0;
   padding-top: 12px;
   padding-bottom: 0;
   border-top: 1px solid rgba(222, 207, 188, 0.8);
@@ -3948,12 +3948,26 @@ button.assignment-return-button:hover {
   flex: 1 1 auto;
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 
 .course-notes-section .course-tool-section-header {
   position: relative;
   z-index: 0;
   pointer-events: none;
+}
+
+.course-context-question-hint {
+  flex: 0 0 auto;
+  margin: auto 0 -6px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .course-practice-section {

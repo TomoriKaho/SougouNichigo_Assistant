@@ -96,10 +96,11 @@ class AssistantConversation {
   }
 
   static listOwned({ userId, contextType, contextId, limit = 50, offset = 0 } = {}) {
+    const hasContextTypeFilter = contextType !== undefined && contextType !== null && String(contextType).trim() !== ''
     const normalizedContextType = normalizeContextType(contextType)
     const normalizedContextId = contextId ? Number(contextId) : 0
     const hasUserQuestionClause = this.hasUserQuestionClause('c')
-    const contextTypeClause = normalizedContextType !== 'none' ? ' AND c.context_type = ?' : ''
+    const contextTypeClause = hasContextTypeFilter ? ' AND c.context_type = ?' : ''
     const contextIdClause = normalizedContextType !== 'none' && normalizedContextId > 0 ? ' AND c.context_id = ?' : ''
     const where = `WHERE ${hasUserQuestionClause} AND c.user_id = ?${contextTypeClause}${contextIdClause}`
     const params = [Number(userId)]

@@ -116,6 +116,7 @@
                     @change="handleAssistantHistoryFilterChange"
                   >
                     <option value="all">全部历史</option>
+                    <option value="none">自由提问</option>
                     <option value="text">课文内容提问</option>
                     <option value="vocabulary">单词提问</option>
                     <option value="grammar">文法提问</option>
