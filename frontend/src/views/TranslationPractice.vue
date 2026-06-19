@@ -11,6 +11,18 @@
       <p>{{ issuePopover.body }}</p>
       <em v-if="issuePopover.suggestion">{{ issuePopover.suggestion }}</em>
     </div>
+    <div
+      v-if="reviewScoreTooltip.visible"
+      class="translation-score-floating-tooltip"
+      :style="{
+        left: `${reviewScoreTooltip.x}px`,
+        top: `${reviewScoreTooltip.y}px`,
+        maxHeight: `${reviewScoreTooltip.maxHeight}px`
+      }"
+    >
+      <strong>{{ reviewScoreTooltip.title }}</strong>
+      <p>{{ reviewScoreTooltip.comment }}</p>
+    </div>
     <div class="translation-practice-shell">
       <div class="translation-practice-grid">
         <main class="translation-practice-main">
@@ -107,7 +119,7 @@
                     <span v-if="!targetGrammarForItem(item).length" class="translation-meta-empty">-</span>
                   </div>
                   <div class="translation-meta-row translation-advanced-row">
-                    <strong>超范围提示</strong>
+                    <strong>注释</strong>
                     <template v-if="advancedNotes.length">
                       <span v-for="(note, index) in advancedNotes" :key="index">
                         {{ formatAdvancedNote(note) }}
@@ -214,33 +226,57 @@
               <span>当前练习上下文</span>
             </div>
             <div class="translation-work-body">
-              <div v-if="currentPractice.review || submitting" class="translation-review-message">
-                <article class="is-assistant">
-                  <p v-if="submitting && !currentPractice.review" class="translation-thinking-text">正在批改中...</p>
-                  <div
-                    v-else
-                    class="translation-review-markdown"
-                    v-html="reviewMarkdownHtml"
-                  ></div>
-                </article>
-              </div>
-
               <div class="translation-chat-body">
-                <div v-if="practiceMessages.length" ref="chatMessagesEl" class="translation-chat-messages">
+                <div v-if="displayMessages.length" ref="chatMessagesEl" class="translation-chat-messages">
                   <article
-                    v-for="message in practiceMessages"
+                    v-for="message in displayMessages"
                     :key="message.id"
-                    :class="message.role === 'assistant' ? 'is-assistant' : 'is-user'"
+                    :class="[
+                      message.role === 'assistant' ? 'is-assistant' : 'is-user',
+                      message.type === 'review' ? 'is-review' : ''
+                    ]"
                   >
-                    <p v-if="message.phase === 'thinking'" class="translation-thinking-text">思考中...</p>
-                    <p v-else>{{ message.content }}</p>
+                    <p v-if="message.phase === 'thinking'" class="translation-thinking-text">
+                      {{ message.content || '思考中...' }}
+                    </p>
+                    <template v-else-if="message.type === 'review'">
+                      <div class="translation-review-score-strip">
+                        <div
+                          v-for="scoreItem in reviewScoreItems"
+                          :key="scoreItem.key"
+                          class="translation-review-score-item"
+                          @mouseenter="showReviewScoreTooltip($event, scoreItem)"
+                          @mousemove="showReviewScoreTooltip($event, scoreItem)"
+                          @mouseleave="hideReviewScoreTooltip"
+                        >
+                          <div
+                            class="translation-review-score-circle"
+                            :style="{ '--score-deg': scoreItem.deg }"
+                          >
+                            <span>{{ scoreItem.score }}</span>
+                          </div>
+                          <strong>{{ scoreItem.label }}</strong>
+                        </div>
+                      </div>
+                      <p class="translation-review-score-hint">鼠标悬停以查看详细分析。</p>
+                      <div
+                        v-if="message.content"
+                        class="translation-review-markdown translation-message-markdown"
+                        v-html="markdownHtml(message.content)"
+                      ></div>
+                    </template>
+                    <div
+                      v-else
+                      class="translation-message-markdown"
+                      v-html="markdownHtml(message.content)"
+                    ></div>
                   </article>
                 </div>
               </div>
             </div>
-            <div v-if="(!currentPractice.review && !submitting) || !practiceMessages.length" class="translation-work-hints">
+            <div v-if="(!currentPractice.review && !submitting) || !displayMessages.length" class="translation-work-hints">
               <p v-if="!currentPractice.review && !submitting">提交后会在这里显示批改结果。</p>
-              <p v-if="!practiceMessages.length">作答前后，均可在此处进行提问或追问。</p>
+              <p v-if="!displayMessages.length">作答前后，均可在此处进行提问或追问。</p>
             </div>
             <form class="translation-chat-form" @submit.prevent="askPractice">
               <textarea
@@ -305,6 +341,14 @@ const issuePopover = reactive({
   body: '',
   suggestion: ''
 });
+const reviewScoreTooltip = reactive({
+  visible: false,
+  x: 0,
+  y: 0,
+  maxHeight: 220,
+  title: '',
+  comment: ''
+});
 const answers = reactive({});
 const chatInput = ref('');
 const chatMessagesEl = ref(null);
@@ -366,29 +410,10 @@ const reviewMarkdownSource = computed(() => {
   const review = currentPractice.value?.review;
   if (!review) return '';
   const lines = [];
-  if (Number.isFinite(Number(review.score))) {
-    lines.push(`### 综合评分：${review.score}`);
-  }
-  if (review.summary) {
-    lines.push(`**总体评价**：${review.summary}`);
-  }
-
-  const dimensions = Array.isArray(review.dimensions) ? review.dimensions : [];
-  if (dimensions.length) {
-    lines.push('#### 维度评价');
-    dimensions.forEach((dimension) => {
-      const score = Number.isFinite(Number(dimension?.score)) ? `（${dimension.score}分）` : '';
-      const label = dimension?.label || '评价';
-      const comment = dimension?.comment || '';
-      if (comment || score) {
-        lines.push(`- **${label}${score}**：${comment}`);
-      }
-    });
-  }
 
   const grammarFocus = Array.isArray(review.grammar_focus) ? review.grammar_focus : [];
   if (grammarFocus.length) {
-    lines.push('#### 目标文法');
+    lines.push('#### 目标文法处理');
     grammarFocus.forEach((item) => {
       const status = item?.ok === false ? '需注意' : '处理较好';
       if (item?.grammar || item?.comment) {
@@ -399,18 +424,18 @@ const reviewMarkdownSource = computed(() => {
 
   const corrected = Array.isArray(review.corrected_answers) ? review.corrected_answers : [];
   if (corrected.length) {
-    lines.push('#### 参考与建议');
+    lines.push('#### 参考译文');
     corrected.forEach((answer) => {
       const revised = answer?.revised_answer || answer?.reference_answer;
       if (revised) {
-        lines.push(`- ${revised}${answer?.comment ? `\n  - ${answer.comment}` : ''}`);
+        lines.push(`**${revised}**${answer?.comment ? `\n\n> ${answer.comment}` : ''}`);
       }
     });
   }
 
   const nextSteps = Array.isArray(review.next_steps) ? review.next_steps.filter(Boolean) : [];
   if (nextSteps.length) {
-    lines.push('#### 下一步');
+    lines.push('#### 下一步学习建议');
     nextSteps.forEach((step) => {
       lines.push(`- ${step}`);
     });
@@ -418,7 +443,94 @@ const reviewMarkdownSource = computed(() => {
 
   return lines.join('\n\n');
 });
-const reviewMarkdownHtml = computed(() => reviewMarkdownRenderer.render(reviewMarkdownSource.value));
+const reviewScoreItems = computed(() => {
+  const review = currentPractice.value?.review;
+  if (!review) return [];
+  const items = [];
+  if (Number.isFinite(Number(review.score))) {
+    items.push({
+      key: 'overall',
+      label: '综合',
+      score: clampScore(review.score),
+      comment: review.summary || ''
+    });
+  }
+  (Array.isArray(review.dimensions) ? review.dimensions : []).slice(0, 4).forEach((dimension, index) => {
+    if (!Number.isFinite(Number(dimension?.score))) return;
+    items.push({
+      key: `dimension-${index}`,
+      label: dimension?.label || '评价',
+      score: clampScore(dimension.score),
+      comment: dimension?.comment || ''
+    });
+  });
+  return items.map((item) => ({
+    ...item,
+    deg: `${Math.max(0, Math.min(1, Number(item.score || 0) / 100)) * 360}deg`
+  }));
+});
+const displayMessages = computed(() => {
+  const messages = practiceMessages.value.map((message) => ({
+    ...message,
+    type: 'chat'
+  }));
+
+  if (currentPractice.value?.review) {
+    const reviewTime = timestampValue(currentPractice.value.updated_at);
+    const reviewRequestMessage = {
+      id: `review-request-${currentPractice.value.id}`,
+      type: 'chat',
+      role: 'user',
+      created_at: currentPractice.value.updated_at,
+      content: '请对我的译文进行批改。'
+    };
+    const reviewMessage = {
+      id: `review-${currentPractice.value.id}`,
+      type: 'review',
+      role: 'assistant',
+      created_at: currentPractice.value.updated_at,
+      content: reviewMarkdownSource.value
+    };
+    const insertAt = messages.findIndex((message) => timestampValue(message.created_at, Number.POSITIVE_INFINITY) > reviewTime);
+    if (insertAt >= 0) {
+      messages.splice(insertAt, 0, reviewRequestMessage, reviewMessage);
+    } else {
+      messages.push(reviewRequestMessage, reviewMessage);
+    }
+  }
+
+  if (submitting.value) {
+    messages.push({
+      id: 'local-review-request',
+      type: 'chat',
+      role: 'user',
+      content: '请对我的译文进行批改。'
+    });
+    messages.push({
+      id: 'local-review-thinking',
+      type: 'chat',
+      role: 'assistant',
+      phase: 'thinking',
+      content: '正在批改中...'
+    });
+  }
+
+  return messages;
+});
+
+function markdownHtml(value) {
+  return reviewMarkdownRenderer.render(String(value || ''));
+}
+
+function clampScore(value) {
+  const score = Math.round(Number(value || 0));
+  return Math.max(0, Math.min(100, score));
+}
+
+function timestampValue(value, fallback = 0) {
+  const timestamp = new Date(String(value || '').replace(' ', 'T')).getTime();
+  return Number.isFinite(timestamp) ? timestamp : fallback;
+}
 
 function answerSegmentsForItem(item) {
   const answerText = String(answers[item?.id] || '');
@@ -502,6 +614,31 @@ function showIssuePopover(event, issue) {
 
 function hideIssuePopover() {
   issuePopover.visible = false;
+}
+
+function showReviewScoreTooltip(event, scoreItem) {
+  const comment = String(scoreItem?.comment || '').trim();
+  if (!comment) {
+    hideReviewScoreTooltip();
+    return;
+  }
+  const rect = event.currentTarget.getBoundingClientRect();
+  const width = 260;
+  const margin = 12;
+  const preferredX = rect.left + rect.width / 2 - width / 2;
+  const maxX = window.innerWidth - width - margin;
+  const x = Math.min(Math.max(preferredX, margin), Math.max(margin, maxX));
+  const y = Math.min(rect.bottom + 8, window.innerHeight - 76);
+  reviewScoreTooltip.visible = true;
+  reviewScoreTooltip.x = x;
+  reviewScoreTooltip.y = y;
+  reviewScoreTooltip.maxHeight = Math.max(72, window.innerHeight - y - margin);
+  reviewScoreTooltip.title = `${scoreItem.label}：${scoreItem.score}`;
+  reviewScoreTooltip.comment = comment;
+}
+
+function hideReviewScoreTooltip() {
+  reviewScoreTooltip.visible = false;
 }
 
 function readStartSelectionCache() {
@@ -721,6 +858,7 @@ async function submitPractice() {
   submitting.value = true;
   saving.value = true;
   error.value = '';
+  scrollChatToBottom();
   try {
     await persistPracticeAnswers({ refreshHistory: false, ignoreSavingGuard: true });
     saving.value = false;
@@ -731,6 +869,7 @@ async function submitPractice() {
     });
     setCurrentPractice(data.item);
     await loadHistory();
+    scrollChatToBottom();
   } catch (err) {
     error.value = err.message || '批改翻译练习失败';
   } finally {

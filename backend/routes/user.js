@@ -177,10 +177,7 @@ router.post('/email-code', async (req, res) => {
   }
 
   if (purpose === 'login' && !User.findRawByEmail(email)) {
-    return res.json({
-      success: true,
-      message: '如果该邮箱已注册，验证码将发送至该邮箱'
-    })
+    return fieldError(res, 404, 'email', '用户不存在，请先注册。')
   }
 
   try {
@@ -277,7 +274,11 @@ router.post('/login', (req, res) => {
   }
 
   const user = User.findRawByIdentifier(identifier)
-  if (!user || !User.verifyPassword(password, user.password)) {
+  if (!user) {
+    return res.status(404).json({ success: false, error: '用户不存在，请先注册。' })
+  }
+
+  if (!User.verifyPassword(password, user.password)) {
     return res.status(401).json({ success: false, error: '账号或密码错误' })
   }
 
@@ -301,7 +302,7 @@ router.post('/login/email-code', (req, res) => {
 
   const user = User.findRawByEmail(email)
   if (!user) {
-    return res.status(401).json({ success: false, error: '邮箱或验证码错误' })
+    return fieldError(res, 404, 'email', '用户不存在，请先注册。')
   }
 
   let verification

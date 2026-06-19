@@ -110,6 +110,9 @@
           @touchend="handleReadingMouseUp"
           @keyup="handleReadingSelection"
         >
+          <button class="course-reading-inline-back" type="button" @click="closeStudy">
+            🔙 返回列表
+          </button>
           <h1 class="course-reading-article-title">{{ studyEntry.title }}</h1>
           <div ref="readingTextRef" class="course-reading-text">
             <template v-for="segment in displaySegments" :key="segmentKey(segment)">
@@ -1044,13 +1047,9 @@ function updateTopbarTitle(title) {
   window.dispatchEvent(new CustomEvent('topbar:title-override', {
     detail: {
       title,
-      backLabel: title ? '返回列表' : ''
+      backLabel: ''
     }
   }));
-}
-
-function handleTopbarBack() {
-  if (studyEntry.value) closeStudy();
 }
 
 function rangeOffsetWithin(container, node, offset) {
@@ -1750,7 +1749,6 @@ watch(courseReadingMeta, (title) => {
 });
 
 onMounted(async () => {
-  window.addEventListener('topbar:back', handleTopbarBack);
   window.addEventListener('mouseup', finishReadingSelectionDrag);
   window.addEventListener('touchend', finishReadingSelectionDrag);
   window.addEventListener('mousemove', handleNoteEditorDragMove);
@@ -1769,7 +1767,6 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   cancelHidePopover();
   cancelHideNotePreview();
-  window.removeEventListener('topbar:back', handleTopbarBack);
   window.removeEventListener('mouseup', finishReadingSelectionDrag);
   window.removeEventListener('touchend', finishReadingSelectionDrag);
   window.removeEventListener('mousemove', handleNoteEditorDragMove);

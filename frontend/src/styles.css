@@ -4124,6 +4124,33 @@ button.assignment-return-button:hover {
   word-break: break-word;
 }
 
+.course-reading-inline-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 0;
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #7a1d29;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.4;
+}
+
+.course-reading-inline-back:hover {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--theme-red-dark);
+  text-decoration: underline;
+  transform: none;
+}
+
 .course-reading-article-title {
   margin: 0 0 28px;
   color: #4c3023;
@@ -5995,7 +6022,7 @@ button.warning:hover {
 .translation-submit-row,
 .translation-side-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
@@ -6036,8 +6063,10 @@ button.warning:hover {
 
 .translation-question-back-button {
   flex: 0 0 auto;
-  min-height: 30px;
-  padding-inline: 14px;
+  min-height: 24px;
+  padding: 3px 10px;
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .translation-target-grammar {
@@ -6514,6 +6543,94 @@ button.warning:hover {
   font-weight: 900;
 }
 
+.translation-review-score-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+}
+
+.translation-review-score-item {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px 4px;
+  border: 1px solid rgba(222, 207, 188, 0.72);
+  border-radius: 10px;
+  background: #fffdf8;
+}
+
+.translation-review-score-circle {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center, #fffdf8 0 57%, transparent 58%),
+    conic-gradient(var(--theme-red) var(--score-deg), rgba(222, 207, 188, 0.62) 0);
+}
+
+.translation-review-score-circle span {
+  color: #4c3023;
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.translation-review-score-item strong {
+  max-width: 100%;
+  color: #4c3023;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.2;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.translation-score-floating-tooltip {
+  position: fixed;
+  z-index: 2147483647;
+  width: min(260px, calc(100vw - 24px));
+  overflow: auto;
+  padding: 8px 9px;
+  border: 1px solid rgba(222, 207, 188, 0.92);
+  border-radius: 8px;
+  background: #fffef8;
+  color: #4c3023;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: normal;
+  box-shadow: 0 12px 26px rgba(76, 48, 35, 0.16);
+  pointer-events: none;
+}
+
+.translation-score-floating-tooltip strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--theme-red-dark);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.translation-score-floating-tooltip p {
+  margin: 0;
+}
+
+.translation-review-score-hint {
+  margin: -2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+  text-align: center;
+}
+
 .translation-work-panel .translation-score-block {
   grid-template-columns: 76px minmax(0, 1fr);
   gap: 10px;
@@ -6731,6 +6848,13 @@ button.warning:hover {
   border-radius: 12px;
 }
 
+.translation-chat-messages article.is-review {
+  max-width: 100%;
+  width: 100%;
+  display: grid;
+  gap: 10px;
+}
+
 .translation-chat-messages article.is-user {
   justify-self: end;
   background: var(--theme-red);
@@ -6753,6 +6877,52 @@ button.warning:hover {
   margin: 0;
   white-space: pre-wrap;
   line-height: 1.6;
+}
+
+.translation-message-markdown {
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.62;
+}
+
+.translation-message-markdown p,
+.translation-message-markdown ul,
+.translation-message-markdown ol {
+  margin: 0 0 7px;
+}
+
+.translation-message-markdown p:last-child,
+.translation-message-markdown ul:last-child,
+.translation-message-markdown ol:last-child {
+  margin-bottom: 0;
+}
+
+.translation-message-markdown ul,
+.translation-message-markdown ol {
+  padding-left: 18px;
+}
+
+.translation-message-markdown li + li {
+  margin-top: 4px;
+}
+
+.translation-message-markdown blockquote {
+  margin: 6px 0 0;
+  padding: 5px 0 5px 9px;
+  border-left: 3px solid rgba(139, 0, 18, 0.28);
+  color: #6a5548;
+}
+
+.translation-message-markdown blockquote p {
+  margin: 0;
+}
+
+.translation-message-markdown strong {
+  font-weight: 950;
+}
+
+.translation-chat-messages article.is-user .translation-message-markdown strong {
+  color: #fff;
 }
 
 .translation-chat-form {

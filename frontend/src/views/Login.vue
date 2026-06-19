@@ -453,6 +453,11 @@ function validateLoginEmailForm() {
   return ['email', 'emailCode'].map(validateLoginEmailField).every(Boolean);
 }
 
+function assignLoginEmailFieldErrors(fieldErrors) {
+  const errors = fieldErrors || {};
+  if (errors.emailCode) loginEmailErrors.emailCode = errors.emailCode;
+}
+
 async function sendRegisterEmailCode() {
   state.error = '';
   registerCodeNotice.value = '';
@@ -476,7 +481,7 @@ async function sendLoginEmailCode() {
   const result = await sendEmailCode(loginEmailForm.email, 'login');
   loginCodeSending.value = false;
   if (!result.ok) {
-    Object.assign(loginEmailErrors, result.fieldErrors || {});
+    assignLoginEmailFieldErrors(result.fieldErrors);
     return;
   }
   loginCodeNotice.value = result.data?.message || '验证码已发送，请查收邮箱。';
@@ -498,7 +503,7 @@ async function submitEmailCodeLogin() {
     emailCode: loginEmailForm.emailCode
   });
   if (!result.ok) {
-    Object.assign(loginEmailErrors, result.fieldErrors || {});
+    assignLoginEmailFieldErrors(result.fieldErrors);
     return;
   }
   router.push({ name: 'Dashboard' });
