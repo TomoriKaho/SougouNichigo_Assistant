@@ -57,7 +57,11 @@
         </div>
       </header>
       <main ref="contentRef" class="content">
-        <router-view />
+        <router-view v-slot="{ Component }">
+          <KeepAlive include="TranslationPractice">
+            <component :is="Component" />
+          </KeepAlive>
+        </router-view>
         <div
           v-if="showAssistantWidget"
           class="assistant-widget"

@@ -5635,7 +5635,7 @@ button.warning:hover {
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
 }
 
 .translation-practice-header {
@@ -5847,7 +5847,7 @@ button.warning:hover {
 }
 
 .translation-issue-popover.is-minor {
-  border-color: rgba(22, 163, 74, 0.38);
+  border-color: rgba(250, 232, 20, 0.9);
 }
 
 .translation-issue-popover strong {
@@ -5862,7 +5862,7 @@ button.warning:hover {
 }
 
 .translation-issue-popover.is-minor strong {
-  color: #15803d;
+  color: #6b5f00;
 }
 
 .translation-issue-popover p,
@@ -5884,8 +5884,8 @@ button.warning:hover {
   min-height: 0;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(432px, 472px);
+  gap: 0;
   overflow: hidden;
 }
 
@@ -5906,6 +5906,9 @@ button.warning:hover {
 .translation-practice-side {
   display: flex;
   flex-direction: column;
+  grid-column: 2;
+  justify-self: end;
+  width: 100%;
 }
 
 .translation-exercise-panel,
@@ -6004,6 +6007,18 @@ button.warning:hover {
   font-size: 13px;
 }
 
+.translation-work-title-group {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.translation-work-title-group h3 {
+  min-width: 0;
+  margin: 0;
+}
+
 .translation-status-pill {
   flex: 0 0 auto;
   padding: 5px 9px;
@@ -6017,6 +6032,12 @@ button.warning:hover {
 .translation-status-pill.is-draft {
   background: #fff2d9;
   color: #9a5b00;
+}
+
+.translation-question-back-button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding-inline: 14px;
 }
 
 .translation-target-grammar {
@@ -6216,10 +6237,10 @@ button.warning:hover {
 }
 
 .translation-answer-issue.is-minor {
-  background: rgba(22, 163, 74, 0.12);
-  color: #116a35;
+  background: rgba(250, 255, 0, 0.42);
+  color: #4f4700;
   text-decoration-line: underline;
-  text-decoration-color: rgba(22, 163, 74, 0.72);
+  text-decoration-color: rgba(218, 196, 0, 0.95);
 }
 
 .translation-answer-issue:hover {
@@ -6444,8 +6465,8 @@ button.warning:hover {
 .translation-review-markdown {
   min-width: 0;
   color: #34251f;
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 13.5px;
+  line-height: 1.62;
 }
 
 .translation-review-markdown h3,
@@ -6462,14 +6483,14 @@ button.warning:hover {
 }
 
 .translation-review-markdown h3 {
-  font-size: 14.5px;
+  font-size: 15px;
   font-weight: 900;
 }
 
 .translation-review-markdown h4 {
   padding-top: 7px;
   border-top: 1px solid rgba(222, 207, 188, 0.68);
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 900;
 }
 
@@ -6783,6 +6804,10 @@ button.warning:hover {
   .translation-submit-row {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .translation-work-title-group {
+    justify-content: flex-start;
   }
 
   .translation-dimension-grid {

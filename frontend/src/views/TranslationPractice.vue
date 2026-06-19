@@ -12,21 +12,6 @@
       <em v-if="issuePopover.suggestion">{{ issuePopover.suggestion }}</em>
     </div>
     <div class="translation-practice-shell">
-      <header class="translation-practice-header">
-        <div class="translation-practice-title">
-          <h2>{{ currentPractice ? `翻译练习：${currentPracticeHeaderLabel}` : '翻译练习' }}</h2>
-        </div>
-        <button
-          v-if="currentPractice"
-          class="ghost translation-header-back-button"
-          type="button"
-          :disabled="generating || submitting || saving"
-          @click="returnToPracticeHome"
-        >
-          返回
-        </button>
-      </header>
-
       <div class="translation-practice-grid">
         <main class="translation-practice-main">
           <div v-if="error" class="error-block translation-error-block">
@@ -100,9 +85,14 @@
               <article v-for="item in exerciseItems" :key="item.id" class="translation-question-card">
                 <div class="translation-question-header">
                   <h4>{{ currentPracticeTitle }}</h4>
-                  <span class="translation-status-pill" :class="`is-${currentPractice.status}`">
-                    {{ currentPractice.status === 'reviewed' ? '已批改' : '答题中' }}
-                  </span>
+                  <button
+                    class="ghost translation-question-back-button"
+                    type="button"
+                    :disabled="generating || submitting || saving"
+                    @click="returnToPracticeHome"
+                  >
+                    返回
+                  </button>
                 </div>
                 <div class="translation-exercise-meta">
                   <div class="translation-meta-row">
@@ -215,7 +205,12 @@
 
           <section v-else class="translation-work-panel translation-combined-panel">
             <div class="translation-side-header">
-              <h3>提问、批改与追问</h3>
+              <div class="translation-work-title-group">
+                <h3>提问、批改与追问</h3>
+                <span class="translation-status-pill" :class="`is-${currentPractice.status}`">
+                  {{ currentPractice.status === 'reviewed' ? '已批改' : '答题中' }}
+                </span>
+              </div>
               <span>当前练习上下文</span>
             </div>
             <div class="translation-work-body">
@@ -245,7 +240,7 @@
             </div>
             <div v-if="(!currentPractice.review && !submitting) || !practiceMessages.length" class="translation-work-hints">
               <p v-if="!currentPractice.review && !submitting">提交后会在这里显示批改结果。</p>
-              <p v-if="!practiceMessages.length">完成或查看练习后，可以在这里继续追问。</p>
+              <p v-if="!practiceMessages.length">作答前后，均可在此处进行提问或追问。</p>
             </div>
             <form class="translation-chat-form" @submit.prevent="askPractice">
               <textarea
@@ -271,11 +266,13 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue';
 import MarkdownIt from 'markdown-it';
 import { apiRequest } from '../utils/apiClient';
 
 const START_SELECTION_CACHE_KEY = 'translation-practice:start-selection:v1';
+defineOptions({ name: 'TranslationPractice' });
+
 const reviewMarkdownRenderer = new MarkdownIt({
   html: false,
   linkify: true,
@@ -295,6 +292,7 @@ const saving = ref(false);
 const historyLoading = ref(false);
 const asking = ref(false);
 const deletingPracticeId = ref(null);
+const translationPageActive = ref(true);
 const error = ref('');
 const toast = reactive({ visible: false, message: '', type: 'info' });
 const issuePopover = reactive({
@@ -463,12 +461,25 @@ function answerSegmentsForItem(item) {
 }
 
 function issueTooltip(issue) {
-  const severity = issue?.severity === 'serious' ? '严重问题' : '小问题';
+  const severity = issueSeverityLabel(issue?.severity);
+  const category = formatIssueCategory(issue?.category);
   return [
-    `${severity}${issue?.category ? ` / ${issue.category}` : ''}`,
+    `${severity}${category ? ` / ${category}` : ''}`,
     issue?.explanation,
     issue?.suggestion ? `建议：${issue.suggestion}` : ''
   ].filter(Boolean).join('\n');
+}
+
+function issueSeverityLabel(severity) {
+  return severity === 'serious' ? '需修正' : '可优化';
+}
+
+function formatIssueCategory(category) {
+  return String(category || '')
+    .split('/')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .join(' / ');
 }
 
 function showIssuePopover(event, issue) {
@@ -483,7 +494,8 @@ function showIssuePopover(event, issue) {
   issuePopover.y = y;
   issuePopover.maxHeight = maxHeight;
   issuePopover.severity = issue?.severity === 'serious' ? 'serious' : 'minor';
-  issuePopover.title = `${issuePopover.severity === 'serious' ? '严重问题' : '小问题'}${issue?.category ? ` / ${issue.category}` : ''}`;
+  const category = formatIssueCategory(issue?.category);
+  issuePopover.title = `${issueSeverityLabel(issuePopover.severity)}${category ? ` / ${category}` : ''}`;
   issuePopover.body = String(issue?.explanation || '').trim();
   issuePopover.suggestion = issue?.suggestion ? `建议：${issue.suggestion}` : '';
 }
@@ -584,12 +596,9 @@ function targetGrammarForItem(item) {
 function formatAdvancedNote(note) {
   if (typeof note === 'string') return note;
   if (!note || typeof note !== 'object') return String(note || '');
-  return [
-    note.word || note.expression || note.term || note.label,
-    note.reading || note.kana,
-    note.meaning || note.translation || note.explanation,
-    note.reason
-  ].filter(Boolean).join('：');
+  const word = note.word || note.expression || note.term || note.label || note.reading || note.kana;
+  const meaning = note.meaning || note.translation || note.explanation || note.definition;
+  return [word, meaning].filter(Boolean).join('：');
 }
 
 function setCurrentPractice(item) {
@@ -614,6 +623,16 @@ function returnToPracticeHome() {
   currentPractice.value = null;
   chatInput.value = '';
   Object.keys(answers).forEach((key) => delete answers[key]);
+  updateTranslationTopbar();
+}
+
+function updateTranslationTopbar() {
+  if (!translationPageActive.value) return;
+  window.dispatchEvent(new CustomEvent('topbar:title-override', {
+    detail: currentPractice.value
+      ? { title: currentPracticeHeaderLabel.value, backLabel: '' }
+      : { title: '', backLabel: '' }
+  }));
 }
 
 async function loadOptions() {
@@ -801,9 +820,33 @@ onMounted(async () => {
   try {
     await loadOptions();
     await loadHistory();
+    updateTranslationTopbar();
   } catch (err) {
     error.value = err.message || '初始化翻译练习失败';
   }
+});
+
+onActivated(() => {
+  translationPageActive.value = true;
+  updateTranslationTopbar();
+});
+
+onDeactivated(() => {
+  translationPageActive.value = false;
+  window.dispatchEvent(new CustomEvent('topbar:title-override', {
+    detail: { title: '', backLabel: '' }
+  }));
+});
+
+onBeforeUnmount(() => {
+  translationPageActive.value = false;
+  window.dispatchEvent(new CustomEvent('topbar:title-override', {
+    detail: { title: '', backLabel: '' }
+  }));
+});
+
+watch(currentPracticeHeaderLabel, () => {
+  updateTranslationTopbar();
 });
 
 watch(

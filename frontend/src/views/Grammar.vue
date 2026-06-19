@@ -22,11 +22,11 @@
               {{ unit.name }}
             </option>
           </select>
-          <input v-model.trim="keyword" placeholder="搜索文法条目" @keydown.enter.prevent="refresh" />
+          <input v-model.trim="keyword" placeholder="搜索文法条目" @keyup.enter.prevent="submitSearch" />
           <button class="ghost" @click="toggleIdOrder" :disabled="loading">
             {{ idOrder === 'asc' ? '倒序查看' : '顺序查看' }}
           </button>
-          <button class="ghost" @click="refresh" :disabled="loading">刷新</button>
+          <button class="ghost" @click="submitSearch" :disabled="loading">刷新</button>
         </div>
         <div class="toolbar-right">
           <button @click="openCreate">新建文法</button>
@@ -349,6 +349,11 @@ function jumpToPage() {
   changePage(Number(pageJump.value || 1));
 }
 
+function submitSearch() {
+  page.value = 1;
+  refresh();
+}
+
 function toggleIdOrder() {
   idOrder.value = idOrder.value === 'asc' ? 'desc' : 'asc';
   page.value = 1;
@@ -495,7 +500,7 @@ watch(() => filters.lessonId, () => {
   refresh();
 });
 
-watch(() => [filters.unitId, keyword.value], () => {
+watch(() => filters.unitId, () => {
   page.value = 1;
   refresh();
 });

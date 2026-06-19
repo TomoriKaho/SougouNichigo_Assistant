@@ -37,11 +37,11 @@
             <option value="new">新出単語</option>
             <option value="practice">練習用単語</option>
           </select>
-          <input v-model.trim="keyword" placeholder="搜索词条/中文翻译" @keydown.enter.prevent="refresh" />
+          <input v-model.trim="keyword" placeholder="搜索词条/中文翻译" @keyup.enter.prevent="submitSearch" />
           <button class="ghost" @click="toggleIdOrder" :disabled="loading">
             {{ idOrder === 'asc' ? '倒序查看' : '顺序查看' }}
           </button>
-          <button class="ghost" @click="refresh" :disabled="loading">刷新</button>
+          <button class="ghost" @click="submitSearch" :disabled="loading">刷新</button>
         </div>
         <div class="toolbar-right">
           <div class="pagination inline-pagination">
@@ -406,6 +406,11 @@ function jumpToPage() {
   changePage(Number(pageJump.value || 1));
 }
 
+function submitSearch() {
+  page.value = 1;
+  refresh();
+}
+
 function toggleIdOrder() {
   idOrder.value = idOrder.value === 'asc' ? 'desc' : 'asc';
   page.value = 1;
@@ -594,7 +599,7 @@ watch(() => filters.lessonId, () => {
   refresh();
 });
 
-watch(() => [filters.unitId, filters.tableType, keyword.value], () => {
+watch(() => [filters.unitId, filters.tableType], () => {
   page.value = 1;
   refresh();
 });
