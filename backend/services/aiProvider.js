@@ -7,6 +7,7 @@ function providerConfig() {
     temperature: Number(getEnv('AI_TEMPERATURE', '0.7')),
     apiKey: getEnv('AI_API_KEY', ''),
     baseUrl: getEnv('AI_BASE_URL'),
+    requestTimeoutMs: Number(getEnv('AI_REQUEST_TIMEOUT_MS', '45000')),
     assignedSites: getEnv('AI_SEARCH_ASSIGNED_SITES', '')
       .split(',')
       .map((item) => item.trim())
@@ -30,7 +31,7 @@ function providerErrorMessage(error) {
 
 function isRetriableProviderError(error) {
   const message = providerErrorMessage(error)
-  return /terminated|fetch failed|socket|ECONNRESET|ETIMEDOUT|UND_ERR|network/i.test(message)
+  return /terminated|fetch failed|socket|ECONNRESET|ETIMEDOUT|UND_ERR|network|aborted|AbortError/i.test(message)
 }
 
 function normalizeProviderError(error) {
@@ -87,17 +88,33 @@ function chatRequestBody({ messages, enableSearch = false, forcedSearch = false,
   return { config, body }
 }
 
-async function fetchChatResponse({ messages, enableSearch = false, forcedSearch = false, stream = true } = {}) {
+async function fetchChatResponse({ messages, enableSearch = false, forcedSearch = false, stream = true, maxTokens } = {}) {
   const { config, body } = chatRequestBody({ messages, enableSearch, forcedSearch, stream })
-  const response = await fetch(`${config.baseUrl.replace(/\/$/, '')}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream'
-    },
-    body: JSON.stringify(body)
-  })
+  const tokenLimit = Number(maxTokens || getEnv('AI_MAX_TOKENS', ''))
+  if (Number.isFinite(tokenLimit) && tokenLimit > 0) {
+    body.max_tokens = Math.floor(tokenLimit)
+  }
+  const controller = new AbortController()
+  const timeoutMs = Number.isFinite(config.requestTimeoutMs) && config.requestTimeoutMs > 0
+    ? config.requestTimeoutMs
+    : 45000
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let response
+
+  try {
+    response = await fetch(`${config.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream'
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    })
+  } finally {
+    clearTimeout(timer)
+  }
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '')
@@ -107,15 +124,15 @@ async function fetchChatResponse({ messages, enableSearch = false, forcedSearch 
   return response
 }
 
-async function completeChatOnce({ messages, enableSearch = false, forcedSearch = false } = {}) {
-  const response = await fetchChatResponse({ messages, enableSearch, forcedSearch, stream: false })
+async function completeChatOnce({ messages, enableSearch = false, forcedSearch = false, maxTokens } = {}) {
+  const response = await fetchChatResponse({ messages, enableSearch, forcedSearch, stream: false, maxTokens })
   return parseNonStreamingResponse(response)
 }
 
-async function completeChat({ messages, enableSearch = false, forcedSearch = false } = {}) {
+async function completeChat({ messages, enableSearch = false, forcedSearch = false, maxTokens } = {}) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      return await completeChatOnce({ messages, enableSearch, forcedSearch })
+      return await completeChatOnce({ messages, enableSearch, forcedSearch, maxTokens })
     } catch (error) {
       if (attempt === 1 || !isRetriableProviderError(error)) {
         throw normalizeProviderError(error)
@@ -126,8 +143,8 @@ async function completeChat({ messages, enableSearch = false, forcedSearch = fal
   return ''
 }
 
-async function* streamChatOnce({ messages, enableSearch = false, forcedSearch = false } = {}) {
-  const response = await fetchChatResponse({ messages, enableSearch, forcedSearch, stream: true })
+async function* streamChatOnce({ messages, enableSearch = false, forcedSearch = false, maxTokens } = {}) {
+  const response = await fetchChatResponse({ messages, enableSearch, forcedSearch, stream: true, maxTokens })
 
   const contentType = response.headers.get('content-type') || ''
   if (!response.body || !contentType.includes('stream')) {
@@ -173,13 +190,13 @@ async function* streamChatOnce({ messages, enableSearch = false, forcedSearch = 
   }
 }
 
-async function* streamChat({ messages, enableSearch = false, forcedSearch = false } = {}) {
+async function* streamChat({ messages, enableSearch = false, forcedSearch = false, maxTokens } = {}) {
   let lastError = null
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     let emitted = false
     try {
-      for await (const delta of streamChatOnce({ messages, enableSearch, forcedSearch })) {
+      for await (const delta of streamChatOnce({ messages, enableSearch, forcedSearch, maxTokens })) {
         emitted = true
         yield delta
       }
@@ -196,7 +213,7 @@ async function* streamChat({ messages, enableSearch = false, forcedSearch = fals
   }
 
   try {
-    const fullText = await completeChatOnce({ messages, enableSearch, forcedSearch })
+    const fullText = await completeChatOnce({ messages, enableSearch, forcedSearch, maxTokens })
     if (fullText) yield fullText
   } catch (error) {
     throw normalizeProviderError(lastError || error)

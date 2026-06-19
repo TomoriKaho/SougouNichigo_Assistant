@@ -7,11 +7,13 @@ const { Assignment } = require('../models/Assignment')
 const { Grammar } = require('../models/Grammar')
 const { Text } = require('../models/Text')
 const { TextNote } = require('../models/TextNote')
+const { TranslationPractice } = require('../models/TranslationPractice')
 const { Vocabulary } = require('../models/Vocabulary')
 const { Classroom } = require('../models/Classroom')
 const { authMiddleware, signUserToken, USER_JWT_EXPIRES_IN } = require('../middleware/auth')
 const assistantService = require('../services/assistantService')
 const emailCodeService = require('../services/emailCodeService')
+const translationPracticeService = require('../services/translationPracticeService')
 
 const USERNAME_PATTERN = /^[\p{L}\p{N}]{2,15}$/u
 const USERNAME_MESSAGE = '用户名需为2-15个字符，仅支持各语言文字'
@@ -622,6 +624,80 @@ router.delete('/text-notes/:id', authMiddleware, (req, res) => {
   const deleted = TextNote.delete(req.user.id, req.params.id)
   if (!deleted) return res.status(404).json({ error: '笔记不存在' })
   res.json({ success: true })
+})
+
+router.get('/translation-practice/options', authMiddleware, (req, res) => {
+  try {
+    res.json(translationPracticeService.listRangeOptions())
+  } catch (error) {
+    routeError(res, error, '获取翻译练习选项失败')
+  }
+})
+
+router.get('/translation-practices', authMiddleware, (req, res) => {
+  res.json(TranslationPractice.listOwned({
+    userId: req.user.id,
+    limit: parseLimit(req.query.limit, 20, 100),
+    offset: parseOffset(req.query.offset)
+  }))
+})
+
+router.get('/translation-practices/:id', authMiddleware, (req, res) => {
+  const item = TranslationPractice.findOwnedById(req.params.id, req.user.id, { includeMessages: true })
+  if (!item) return res.status(404).json({ error: '练习记录不存在' })
+  res.json({ item })
+})
+
+router.post('/translation-practices/generate', authMiddleware, async (req, res) => {
+  try {
+    const item = await translationPracticeService.generatePractice({
+      userId: req.user.id,
+      rangeKey: req.body.range_key || req.body.rangeKey || 'upper',
+      directionMode: req.body.direction_mode || req.body.directionMode || 'jp_to_zh'
+    })
+    res.status(201).json({ item })
+  } catch (error) {
+    routeError(res, error, '生成翻译练习失败')
+  }
+})
+
+router.post('/translation-practices/:id/submit', authMiddleware, async (req, res) => {
+  try {
+    const item = await translationPracticeService.submitPractice({
+      userId: req.user.id,
+      practiceId: req.params.id,
+      answers: req.body.answers || {}
+    })
+    res.json({ item })
+  } catch (error) {
+    routeError(res, error, '批改翻译练习失败')
+  }
+})
+
+router.patch('/translation-practices/:id/answers', authMiddleware, async (req, res) => {
+  try {
+    const item = await translationPracticeService.savePracticeAnswers({
+      userId: req.user.id,
+      practiceId: req.params.id,
+      answers: req.body.answers || {}
+    })
+    res.json({ item })
+  } catch (error) {
+    routeError(res, error, '保存翻译答案失败')
+  }
+})
+
+router.post('/translation-practices/:id/messages', authMiddleware, async (req, res) => {
+  try {
+    const result = await translationPracticeService.askPractice({
+      userId: req.user.id,
+      practiceId: req.params.id,
+      content: req.body.content
+    })
+    res.status(201).json(result)
+  } catch (error) {
+    routeError(res, error, '追问失败')
+  }
 })
 
 router.get('/classes', authMiddleware, (req, res) => {

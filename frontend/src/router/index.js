@@ -8,13 +8,13 @@ import Grammar from '../views/Grammar.vue';
 import GrammarStudy from '../views/GrammarStudy.vue';
 import CourseStudy from '../views/CourseStudy.vue';
 import WordStudy from '../views/WordStudy.vue';
+import TranslationPractice from '../views/TranslationPractice.vue';
 import Classes from '../views/Classes.vue';
 import ClassDetail from '../views/ClassDetail.vue';
 import Texts from '../views/Texts.vue';
 import Feedback from '../views/Feedback.vue';
 import DatabaseManagement from '../views/DatabaseManagement.vue';
 import Login from '../views/Login.vue';
-import UserPlaceholder from '../views/UserPlaceholder.vue';
 
 const routes = [
   {
@@ -34,7 +34,7 @@ const routes = [
       { path: 'grammar-study', name: 'GrammarStudy', component: GrammarStudy, meta: { title: '文法学习', requiresUser: true } },
       { path: 'classes', name: 'Classes', component: Classes, meta: { title: '班级', requiresUser: true } },
       { path: 'classes/:id', name: 'ClassDetail', component: ClassDetail, meta: { title: '班级详情', requiresUser: true } },
-      { path: 'translation-practice', name: 'TranslationPractice', component: UserPlaceholder, meta: { title: '翻译练习', requiresUser: true } },
+      { path: 'translation-practice', name: 'TranslationPractice', component: TranslationPractice, meta: { title: '翻译练习', requiresUser: true } },
       { path: 'users', name: 'Users', component: Users, meta: { requiresPrivileged: true } },
       { path: 'vocabulary', name: 'Vocabulary', component: Vocabulary, meta: { requiresPrivileged: true } },
       { path: 'grammar', name: 'Grammar', component: Grammar, meta: { requiresPrivileged: true } },
