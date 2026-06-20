@@ -35,11 +35,120 @@ function mapPractice(row, { includeMessages = false } = {}) {
   return item
 }
 
+function mapQuestionSet(row) {
+  if (!row) return null
+  const item = {
+    ...row,
+    grammar: safeParseJson(row.grammar_json, []),
+    vocabulary: safeParseJson(row.vocabulary_json, []),
+    exercise: safeParseJson(row.exercise_json, {})
+  }
+  delete item.grammar_json
+  delete item.vocabulary_json
+  delete item.exercise_json
+  return item
+}
+
 class TranslationPractice {
+  static createQuestionSet(payload) {
+    const result = userDb.prepare(`
+      INSERT INTO translation_practice_sets (
+        textbook_id,
+        textbook_name,
+        range_key,
+        range_label,
+        lesson_min,
+        lesson_max,
+        ability_label,
+        direction_mode,
+        difficulty_mode,
+        grammar_json,
+        vocabulary_json,
+        exercise_json,
+        created_by,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
+    `).run(
+      Number(payload.textbookId),
+      String(payload.textbookName || ''),
+      String(payload.rangeKey || ''),
+      String(payload.rangeLabel || ''),
+      Number(payload.lessonMin || 0),
+      Number(payload.lessonMax || 0),
+      String(payload.abilityLabel || ''),
+      String(payload.directionMode || 'jp_to_zh'),
+      String(payload.difficultyMode || 'normal'),
+      stringify(payload.grammar, []),
+      stringify(payload.vocabulary, []),
+      stringify(payload.exercise, {}),
+      payload.createdBy ? Number(payload.createdBy) : null
+    )
+
+    return this.findQuestionSetById(result.lastInsertRowid)
+  }
+
+  static findQuestionSetById(id) {
+    const row = userDb.prepare(`
+      SELECT *
+      FROM translation_practice_sets
+      WHERE id = ?
+    `).get(Number(id))
+    return mapQuestionSet(row)
+  }
+
+  static findReusableQuestionSet({ userId, textbookId, rangeKey, directionMode, difficultyMode }) {
+    const row = userDb.prepare(`
+      SELECT s.*
+      FROM translation_practice_sets s
+      WHERE s.textbook_id = ?
+        AND s.range_key = ?
+        AND s.direction_mode = ?
+        AND s.difficulty_mode = ?
+        AND NOT EXISTS (
+          SELECT 1
+          FROM translation_practices p
+          WHERE p.user_id = ?
+            AND p.question_set_id = s.id
+            AND p.status = 'reviewed'
+        )
+      ORDER BY datetime(s.created_at) ASC, s.id ASC
+      LIMIT 1
+    `).get(
+      Number(textbookId),
+      String(rangeKey || ''),
+      String(directionMode || 'jp_to_zh'),
+      String(difficultyMode || 'normal'),
+      Number(userId)
+    )
+    return mapQuestionSet(row)
+  }
+
+  static createFromQuestionSet({ userId, questionSet, status = 'draft' }) {
+    if (!questionSet) return null
+    return this.create({
+      userId,
+      questionSetId: questionSet.id,
+      textbookId: questionSet.textbook_id,
+      textbookName: questionSet.textbook_name,
+      rangeKey: questionSet.range_key,
+      rangeLabel: questionSet.range_label,
+      lessonMin: questionSet.lesson_min,
+      lessonMax: questionSet.lesson_max,
+      abilityLabel: questionSet.ability_label,
+      status,
+      grammar: questionSet.grammar,
+      vocabulary: questionSet.vocabulary,
+      exercise: questionSet.exercise
+    })
+  }
+
   static create(payload) {
     const result = userDb.prepare(`
       INSERT INTO translation_practices (
         user_id,
+        question_set_id,
         textbook_id,
         textbook_name,
         range_key,
@@ -54,9 +163,10 @@ class TranslationPractice {
         created_at,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
     `).run(
       Number(payload.userId),
+      payload.questionSetId ? Number(payload.questionSetId) : null,
       Number(payload.textbookId),
       String(payload.textbookName || ''),
       String(payload.rangeKey || ''),

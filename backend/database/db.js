@@ -267,6 +267,7 @@ function initUserDatabase() {
     CREATE TABLE IF NOT EXISTS translation_practices (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
+      question_set_id INTEGER,
       textbook_id INTEGER NOT NULL,
       textbook_name TEXT NOT NULL,
       range_key TEXT NOT NULL,
@@ -285,6 +286,29 @@ function initUserDatabase() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `)
+  ensureColumn(userDb, 'translation_practices', 'question_set_id', 'question_set_id INTEGER')
+
+  userDb.exec(`
+    CREATE TABLE IF NOT EXISTS translation_practice_sets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      textbook_id INTEGER NOT NULL,
+      textbook_name TEXT NOT NULL,
+      range_key TEXT NOT NULL,
+      range_label TEXT NOT NULL,
+      lesson_min INTEGER NOT NULL,
+      lesson_max INTEGER NOT NULL,
+      ability_label TEXT NOT NULL,
+      direction_mode TEXT NOT NULL,
+      difficulty_mode TEXT NOT NULL,
+      grammar_json TEXT NOT NULL DEFAULT '[]',
+      vocabulary_json TEXT NOT NULL DEFAULT '[]',
+      exercise_json TEXT NOT NULL DEFAULT '{}',
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `)
 
   userDb.exec(`
     CREATE TABLE IF NOT EXISTS translation_practice_messages (
@@ -300,7 +324,50 @@ function initUserDatabase() {
   `)
 
   userDb.exec('CREATE INDEX IF NOT EXISTS idx_translation_practices_user ON translation_practices(user_id, updated_at)')
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_translation_practices_set ON translation_practices(question_set_id)')
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_translation_sets_lookup ON translation_practice_sets(textbook_id, range_key, direction_mode, difficulty_mode, created_at)')
   userDb.exec('CREATE INDEX IF NOT EXISTS idx_translation_messages_practice ON translation_practice_messages(practice_id, created_at)')
+
+  userDb.exec(`
+    CREATE TABLE IF NOT EXISTS text_cloze_practice_sets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      text_id INTEGER NOT NULL,
+      textbook_name TEXT NOT NULL,
+      lesson_number INTEGER NOT NULL,
+      unit_number INTEGER NOT NULL,
+      text_title TEXT NOT NULL,
+      content_snapshot TEXT NOT NULL,
+      question_count INTEGER NOT NULL DEFAULT 0,
+      vocabulary_json TEXT NOT NULL DEFAULT '[]',
+      grammar_json TEXT NOT NULL DEFAULT '[]',
+      questions_json TEXT NOT NULL DEFAULT '[]',
+      source_candidates_json TEXT NOT NULL DEFAULT '[]',
+      created_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `)
+
+  userDb.exec(`
+    CREATE TABLE IF NOT EXISTS text_cloze_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      set_id INTEGER NOT NULL,
+      text_id INTEGER NOT NULL,
+      answers_json TEXT NOT NULL DEFAULT '{}',
+      result_json TEXT NOT NULL DEFAULT '{}',
+      submitted_at TEXT DEFAULT (datetime('now', 'localtime')),
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (set_id) REFERENCES text_cloze_practice_sets(id) ON DELETE CASCADE
+    )
+  `)
+
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_text_cloze_sets_text ON text_cloze_practice_sets(text_id, created_at)')
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_text_cloze_attempts_user_text ON text_cloze_attempts(user_id, text_id, submitted_at)')
+  userDb.exec('CREATE INDEX IF NOT EXISTS idx_text_cloze_attempts_user_set ON text_cloze_attempts(user_id, set_id)')
 }
 
 function initVocabularyDatabase() {

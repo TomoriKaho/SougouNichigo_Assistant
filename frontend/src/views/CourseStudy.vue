@@ -99,6 +99,76 @@
           <p class="error">{{ studyError }}</p>
           <button class="ghost" @click="reloadStudy">重试</button>
         </div>
+        <article v-else-if="clozePractice.open" class="course-cloze-reading-panel">
+          <div class="course-cloze-nav-stack">
+            <div class="course-reading-inline-action-row">
+              <button class="course-reading-inline-back" type="button" @click="returnToReadingFromCloze">
+                🔙 返回课文
+              </button>
+              <span v-if="clozePractice.currentSet" class="course-cloze-status-pill" :class="{ submitted: clozePracticeSubmitted }">
+                {{ clozePracticeSubmitted ? '已提交' : '答题中' }}
+              </span>
+            </div>
+            <div v-if="clozePractice.currentSet" class="course-reading-inline-action-row">
+              <button class="course-reading-inline-back" type="button" @click="returnClozeHome">
+                🔙 返回练习首页
+              </button>
+            </div>
+          </div>
+
+          <div v-if="clozePractice.error" class="error-block course-cloze-error">
+            <p class="error">{{ clozePractice.error }}</p>
+            <button class="ghost" type="button" @click="clozePractice.error = ''">知道了</button>
+          </div>
+
+          <section v-if="!clozePractice.currentSet && !clozePractice.loading" class="course-cloze-home">
+            <div class="course-cloze-home-mark">练习</div>
+            <h3>选择练习模式后开始</h3>
+            <label class="course-cloze-mode-control">
+              <span>模式</span>
+              <select v-model="clozePractice.mode">
+                <option value="cloze">完形填空</option>
+              </select>
+            </label>
+            <button
+              class="course-cloze-primary-button"
+              type="button"
+              :disabled="clozePractice.loading"
+              @click="startClozePractice"
+            >
+              {{ clozePractice.loading ? '准备中...' : '开始练习' }}
+            </button>
+          </section>
+
+          <section v-else-if="clozePractice.loading && !clozePractice.currentSet" class="course-cloze-home">
+            <div class="course-cloze-home-mark">AI</div>
+            <h3>{{ clozePractice.loadingText || '正在准备练习...' }}</h3>
+          </section>
+
+          <template v-else>
+            <div class="course-cloze-practice-title-row">
+              <h1>{{ clozePractice.currentSet?.text_title || studyEntry?.title }}</h1>
+            </div>
+            <div class="course-cloze-reading-text">
+              <template v-for="segment in clozeDisplaySegments" :key="segment.key">
+                <span v-if="segment.type === 'text'">{{ segment.text }}</span>
+                <span
+                  v-else
+                  class="course-cloze-blank"
+                  :class="clozeBlankClass(segment.question)"
+                  :style="{ '--blank-chars': clozeBlankWidth(segment.question) }"
+                >
+                  <span
+                    v-if="clozeAnswerText(segment.question)"
+                    class="course-cloze-blank-answer"
+                  >{{ clozeAnswerText(segment.question) }}</span>
+                  <span v-else class="course-cloze-blank-number">{{ segment.question.number }}</span>
+                </span>
+              </template>
+            </div>
+          </template>
+        </article>
+
         <article
           v-else
           class="course-reading-content"
@@ -110,9 +180,19 @@
           @touchend="handleReadingMouseUp"
           @keyup="handleReadingSelection"
         >
-          <button class="course-reading-inline-back" type="button" @click="closeStudy">
-            🔙 返回列表
-          </button>
+          <div class="course-reading-inline-action-row">
+            <button class="course-reading-inline-back" type="button" @click="closeStudy">
+              🔙 返回列表
+            </button>
+            <button
+              class="course-reading-inline-back course-reading-inline-practice"
+              type="button"
+              :disabled="studyLoading"
+              @click="enterClozePractice"
+            >
+              课文内容练习
+            </button>
+          </div>
           <h1 class="course-reading-article-title">{{ studyEntry.title }}</h1>
           <div ref="readingTextRef" class="course-reading-text">
             <template v-for="segment in displaySegments" :key="segmentKey(segment)">
@@ -147,7 +227,96 @@
           </div>
         </article>
       </div>
-      <aside class="course-reading-tool-window">
+      <aside class="course-reading-tool-window" :class="{ 'is-cloze-mode': clozePractice.open }">
+        <template v-if="clozePractice.open">
+          <section class="course-cloze-side is-inline">
+            <template v-if="clozePractice.currentSet">
+              <div class="course-cloze-side-header">
+                <div>
+                  <h3>题目栏</h3>
+                  <p>
+                    {{ clozePracticeSubmitted ? `已提交：${clozeCorrectCount}/${clozeQuestions.length}` : `已选择：${clozeAnsweredCount}/${clozeQuestions.length}` }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="course-cloze-question-list">
+                <article
+                  v-for="question in clozeQuestions"
+                  :key="question.id"
+                  class="course-cloze-question-item"
+                  :class="clozeQuestionClass(question)"
+                >
+                  <div class="course-cloze-question-title">
+                    <strong>{{ question.number }}</strong>
+                  </div>
+                  <div class="course-cloze-option-grid">
+                    <button
+                      v-for="option in question.options"
+                      :key="`${question.id}-${option.key}`"
+                      type="button"
+                      class="course-cloze-option"
+                      :class="clozeOptionClass(question, option)"
+                      :disabled="clozePracticeSubmitted || clozePractice.submitting"
+                      @click="selectClozeAnswer(question, option.key)"
+                    >
+                      <span>{{ option.key }}</span>
+                      <strong>{{ option.text }}</strong>
+                    </button>
+                  </div>
+                </article>
+              </div>
+
+              <button
+                v-if="!clozePracticeSubmitted"
+                class="course-cloze-primary-button course-cloze-submit-button"
+                type="button"
+                :disabled="clozePractice.submitting || clozeAnsweredCount < clozeQuestions.length"
+                @click="submitClozePractice"
+              >
+                {{ clozePractice.submitting ? '提交中...' : '提交' }}
+              </button>
+            </template>
+
+            <template v-else>
+              <div class="course-cloze-side-header">
+                <div>
+                  <h3>练习记录</h3>
+                  <p>{{ clozePracticeHistoryLabel }}</p>
+                </div>
+                <button class="ghost" type="button" :disabled="clozePractice.historyLoading" @click="loadClozePracticeHistory">刷新</button>
+              </div>
+              <div v-if="clozePractice.historyLoading" class="course-cloze-side-empty">加载中...</div>
+              <div v-else-if="clozeHistoryRows.length" class="course-cloze-history-list">
+                <div
+                  v-for="item in clozeHistoryRows"
+                  :key="item.recordKey"
+                  class="course-cloze-history-row"
+                >
+                  <button
+                    class="course-cloze-history-open"
+                    type="button"
+                    @click="openClozeRecord(item)"
+                  >
+                    <strong>{{ clozeRecordTitle(item) }}</strong>
+                    <span>{{ clozeRecordMeta(item) }}</span>
+                  </button>
+                  <button
+                    class="course-cloze-history-delete"
+                    type="button"
+                    :disabled="clozePractice.deletingRecordKey === item.recordKey"
+                    @click="deleteClozeRecord(item)"
+                  >
+                    {{ clozePractice.deletingRecordKey === item.recordKey ? '删除中' : '删除' }}
+                  </button>
+                </div>
+              </div>
+              <div v-else class="course-cloze-side-empty">暂无练习记录</div>
+            </template>
+          </section>
+        </template>
+
+        <template v-else>
         <section class="course-tool-section course-selection-tool-section">
           <div class="course-selection-tool-row">
             <button
@@ -159,13 +328,6 @@
               {{ selectionMode ? '选择中' : '选择工具' }}
             </button>
             <p class="course-tool-hint">选中文字后，可以提问或添加笔记。</p>
-          </div>
-        </section>
-
-        <section class="course-tool-section course-practice-section">
-          <div class="course-practice-row">
-            <button class="course-practice-start-button" type="button" disabled>开始练习</button>
-            <h2>课文内容练习</h2>
           </div>
         </section>
 
@@ -217,6 +379,7 @@
             </label>
           </div>
         </section>
+        </template>
       </aside>
     </div>
 
@@ -399,7 +562,7 @@ import { useRouter } from 'vue-router';
 import { apiRequest, ApiError } from '../utils/apiClient';
 import { useAuth } from '../composables/useAuth';
 
-const { logout } = useAuth();
+const { state: authState, logout } = useAuth();
 const router = useRouter();
 
 const rows = ref([]);
@@ -423,6 +586,7 @@ const notes = ref([]);
 const notesLoading = ref(false);
 const questionHistoryRows = ref([]);
 const questionHistoryLoading = ref(false);
+const clozeAnswers = reactive({});
 const selectionMode = ref(false);
 const currentSelection = ref(null);
 const readingSelectionDragging = ref(false);
@@ -434,8 +598,11 @@ const popoverPosition = reactive({ x: 0, y: 0 });
 const selectionActionsPosition = reactive({ x: 0, y: 0 });
 const toast = reactive({ visible: false, message: '', type: 'info' });
 const NOTE_EDITOR_TOOLBAR_HEIGHT = 46;
+const CLOZE_DRAFT_CACHE_PREFIX = 'course-study:cloze-draft:v2:';
+const CLOZE_GENERATION_CACHE_PREFIX = 'course-study:cloze-generation:v1:';
 let hidePopoverTimer = 0;
 let hideNotePreviewTimer = 0;
+let clozeGenerationPollTimer = 0;
 let noteEditorDragState = null;
 
 const noteEditor = reactive({
@@ -459,6 +626,21 @@ const filters = reactive({
 const markerFilters = reactive({
   words: 'all',
   grammar: 'all'
+});
+
+const clozePractice = reactive({
+  open: false,
+  mode: 'cloze',
+  loading: false,
+  loadingText: '',
+  submitting: false,
+  error: '',
+  currentSet: null,
+  currentAttempt: null,
+  historyRows: [],
+  historyLoading: false,
+  cachedDraft: null,
+  deletingRecordKey: ''
 });
 
 const textbooks = computed(() => options.value.textbooks || []);
@@ -534,6 +716,48 @@ const markerPatterns = computed(() => {
 
 const annotatedSegments = computed(() => annotateText(studyEntry.value?.content || '', markerPatterns.value));
 const displaySegments = computed(() => splitSegmentsByNotes(annotatedSegments.value, notes.value));
+const currentUserId = computed(() => Number(authState.user?.id || 0));
+const clozeQuestions = computed(() => clozePractice.currentSet?.questions || []);
+const clozePracticeSubmitted = computed(() => !!clozePractice.currentAttempt);
+const clozeResultMap = computed(() => {
+  const rows = clozePractice.currentAttempt?.result?.items || [];
+  return rows.reduce((map, item) => {
+    map.set(String(item.id), item);
+    return map;
+  }, new Map());
+});
+const clozeAnsweredCount = computed(() => clozeQuestions.value.filter((question) => clozeAnswers[question.id]).length);
+const clozeCorrectCount = computed(() => {
+  const rows = clozePractice.currentAttempt?.result?.items || [];
+  return rows.filter((item) => item.is_correct).length;
+});
+const clozePracticeHistoryLabel = computed(() => `${clozeHistoryRows.value.length} 条记录`);
+const clozeHistoryRows = computed(() => {
+  const rows = [];
+  const draft = clozePractice.cachedDraft;
+  if (
+    draft?.setId
+    && Number(draft.textId) === Number(studyEntry.value?.id)
+  ) {
+    rows.push({
+      recordKey: `draft-${draft.setId}`,
+      isDraft: true,
+      draft
+    });
+  }
+  clozePractice.historyRows.forEach((attempt) => {
+    rows.push({
+      recordKey: `attempt-${attempt.id}`,
+      isDraft: false,
+      attempt
+    });
+  });
+  return rows;
+});
+const clozeDisplaySegments = computed(() => buildClozeDisplaySegments(
+  clozePractice.currentSet?.content_snapshot || studyEntry.value?.content || '',
+  clozeQuestions.value
+));
 
 function showToast(message, type = 'info') {
   toast.message = message;
@@ -550,6 +774,513 @@ function handleApiError(err) {
     return;
   }
   showToast(err instanceof ApiError ? err.message : '操作失败', 'error');
+}
+
+function clozeCacheKey(textId = studyEntry.value?.id, userId = currentUserId.value) {
+  return `${CLOZE_DRAFT_CACHE_PREFIX}${userId || 'anonymous'}:${textId || 'none'}`;
+}
+
+function readClozeDraftCache(textId = studyEntry.value?.id) {
+  const userId = currentUserId.value;
+  if (!textId || !userId) return null;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(clozeCacheKey(textId, userId)) || 'null');
+    if (!parsed || typeof parsed !== 'object' || !parsed.setId) return null;
+    if (Number(parsed.userId || 0) !== Number(userId)) return null;
+    return {
+      ...parsed,
+      userId,
+      textId: parsed.textId || textId
+    };
+  } catch (err) {
+    return null;
+  }
+}
+
+function writeClozeDraftCache() {
+  const userId = currentUserId.value;
+  const textId = studyEntry.value?.id;
+  const setId = clozePractice.currentSet?.id;
+  if (!userId || !textId || !setId || clozePracticeSubmitted.value) return;
+  try {
+    localStorage.setItem(clozeCacheKey(textId, userId), JSON.stringify({
+      userId,
+      textId,
+      setId,
+      practiceSet: {
+        id: clozePractice.currentSet.id,
+        text_id: clozePractice.currentSet.text_id,
+        textbook_name: clozePractice.currentSet.textbook_name,
+        lesson_number: clozePractice.currentSet.lesson_number,
+        unit_number: clozePractice.currentSet.unit_number,
+        text_title: clozePractice.currentSet.text_title,
+        question_count: clozePractice.currentSet.question_count,
+        updated_at: clozePractice.currentSet.updated_at
+      },
+      answers: { ...clozeAnswers },
+      updatedAt: Date.now()
+    }));
+    clozePractice.cachedDraft = readClozeDraftCache(textId);
+  } catch (err) {
+    // localStorage can be unavailable in restricted browser contexts.
+  }
+}
+
+function clearClozeDraftCache(textId = studyEntry.value?.id) {
+  const userId = currentUserId.value;
+  if (!textId || !userId) return;
+  try {
+    localStorage.removeItem(clozeCacheKey(textId, userId));
+  } catch (err) {
+    // localStorage can be unavailable in restricted browser contexts.
+  }
+  clozePractice.cachedDraft = null;
+}
+
+function clozeGenerationCacheKey(textId = studyEntry.value?.id, userId = currentUserId.value) {
+  return `${CLOZE_GENERATION_CACHE_PREFIX}${userId || 'anonymous'}:${textId || 'none'}`;
+}
+
+function readClozeGenerationPending(textId = studyEntry.value?.id) {
+  const userId = currentUserId.value;
+  if (!textId || !userId) return null;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(clozeGenerationCacheKey(textId, userId)) || 'null');
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (Number(parsed.userId || 0) !== Number(userId)) return null;
+    if (Number(parsed.textId || 0) !== Number(textId)) return null;
+    return parsed;
+  } catch (err) {
+    return null;
+  }
+}
+
+function writeClozeGenerationPending(textId = studyEntry.value?.id) {
+  const userId = currentUserId.value;
+  if (!textId || !userId) return;
+  try {
+    localStorage.setItem(clozeGenerationCacheKey(textId, userId), JSON.stringify({
+      userId,
+      textId,
+      startedAt: Date.now()
+    }));
+  } catch (err) {
+    // localStorage can be unavailable in restricted browser contexts.
+  }
+}
+
+function clearClozeGenerationPending(textId = studyEntry.value?.id) {
+  const userId = currentUserId.value;
+  if (!textId || !userId) return;
+  try {
+    localStorage.removeItem(clozeGenerationCacheKey(textId, userId));
+  } catch (err) {
+    // localStorage can be unavailable in restricted browser contexts.
+  }
+}
+
+function stopClozeGenerationPolling() {
+  if (!clozeGenerationPollTimer) return;
+  window.clearTimeout(clozeGenerationPollTimer);
+  clozeGenerationPollTimer = 0;
+}
+
+function scheduleClozeGenerationPolling(delay = 2400) {
+  stopClozeGenerationPolling();
+  if (!clozePractice.open || !studyEntry.value?.id) return;
+  clozeGenerationPollTimer = window.setTimeout(() => {
+    checkClozeGenerationStatus({ schedule: true });
+  }, delay);
+}
+
+function resetClozeAnswers(nextAnswers = {}) {
+  Object.keys(clozeAnswers).forEach((key) => delete clozeAnswers[key]);
+  Object.entries(nextAnswers || {}).forEach(([key, value]) => {
+    clozeAnswers[key] = value;
+  });
+}
+
+function setClozePracticeSet(item, { answers = {}, attempt = null } = {}) {
+  clozePractice.currentSet = item;
+  clozePractice.currentAttempt = attempt;
+  resetClozeAnswers(answers);
+  if (!attempt) writeClozeDraftCache();
+}
+
+function resetClozePracticeState({ keepOpen = false } = {}) {
+  clozePractice.open = keepOpen ? clozePractice.open : false;
+  clozePractice.mode = 'cloze';
+  clozePractice.loading = false;
+  clozePractice.loadingText = '';
+  clozePractice.submitting = false;
+  clozePractice.error = '';
+  clozePractice.currentSet = null;
+  clozePractice.currentAttempt = null;
+  clozePractice.historyRows = [];
+  clozePractice.historyLoading = false;
+  clozePractice.cachedDraft = null;
+  clozePractice.deletingRecordKey = '';
+  resetClozeAnswers();
+}
+
+function buildClozeDisplaySegments(content, questions) {
+  const text = String(content || '');
+  const sortedQuestions = [...(questions || [])]
+    .map((question) => ({
+      ...question,
+      start_offset: Number(question.start_offset),
+      end_offset: Number(question.end_offset)
+    }))
+    .filter((question) => (
+      Number.isFinite(question.start_offset)
+      && Number.isFinite(question.end_offset)
+      && question.end_offset > question.start_offset
+      && question.start_offset >= 0
+      && question.end_offset <= text.length
+    ))
+    .sort((a, b) => a.start_offset - b.start_offset || a.end_offset - b.end_offset);
+
+  const segments = [];
+  let cursor = 0;
+  sortedQuestions.forEach((question) => {
+    if (question.start_offset < cursor) return;
+    if (question.start_offset > cursor) {
+      segments.push({
+        key: `text-${cursor}-${question.start_offset}`,
+        type: 'text',
+        text: text.slice(cursor, question.start_offset)
+      });
+    }
+    segments.push({
+      key: `blank-${question.id}-${question.start_offset}-${question.end_offset}`,
+      type: 'blank',
+      text: text.slice(question.start_offset, question.end_offset),
+      question
+    });
+    cursor = question.end_offset;
+  });
+  if (cursor < text.length) {
+    segments.push({
+      key: `text-${cursor}-${text.length}`,
+      type: 'text',
+      text: text.slice(cursor)
+    });
+  }
+  return segments;
+}
+
+function clozeBlankWidth(question) {
+  const answerText = clozeAnswerText(question);
+  const length = answerText
+    ? Array.from(answerText).length
+    : Number(question?.end_offset || 0) - Number(question?.start_offset || 0);
+  return `${Math.max(4, Math.min(12, length || 4))}em`;
+}
+
+function clozeResultForQuestion(question) {
+  return clozeResultMap.value.get(String(question?.id || '')) || null;
+}
+
+function clozeAnswerText(question) {
+  const key = clozeAnswers[question?.id];
+  if (!key) return '';
+  const option = (question?.options || []).find((item) => item.key === key);
+  return String(option?.text || '').trim();
+}
+
+function clozeBlankClass(question) {
+  const result = clozeResultForQuestion(question);
+  return {
+    answered: !!clozeAnswers[question.id],
+    correct: !!result?.is_correct,
+    wrong: result && !result.is_correct
+  };
+}
+
+function clozeQuestionClass(question) {
+  const result = clozeResultForQuestion(question);
+  return {
+    answered: !!clozeAnswers[question.id],
+    correct: !!result?.is_correct,
+    wrong: result && !result.is_correct
+  };
+}
+
+function clozeOptionClass(question, option) {
+  const selected = clozeAnswers[question.id] === option.key;
+  const result = clozeResultForQuestion(question);
+  return {
+    selected,
+    correct: result && option.key === result.correct_key,
+    wrong: result && selected && option.key !== result.correct_key
+  };
+}
+
+function selectClozeAnswer(question, key) {
+  if (clozePracticeSubmitted.value || clozePractice.submitting) return;
+  clozeAnswers[question.id] = key;
+  writeClozeDraftCache();
+}
+
+function clozeRecordSet(item) {
+  return item?.isDraft ? (item.draft?.practiceSet || {}) : (item?.attempt?.practice_set || {});
+}
+
+function clozeRecordTitle(item) {
+  const set = clozeRecordSet(item);
+  if (item?.isDraft) {
+    return set?.text_title || '完形填空';
+  }
+  const result = item?.attempt?.result || {};
+  return `${set?.text_title || '完形填空'} ${Number(result.correct_count || 0)}/${Number(result.question_count || set?.question_count || 0)}`;
+}
+
+function clozeRecordMeta(item) {
+  const timeValue = item?.isDraft
+    ? item.draft?.updatedAt
+    : item?.attempt?.submitted_at;
+  const timeText = item?.isDraft
+    ? formatLocalDateTime(timeValue)
+    : String(timeValue || '').slice(0, 16);
+  const status = item?.isDraft ? '未提交' : '已提交';
+  return `${status}${timeText ? ` ${timeText}` : ''}`;
+}
+
+function formatLocalDateTime(value) {
+  const timestamp = Number(value || 0);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return '';
+  const date = new Date(timestamp);
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+async function applyClozeGenerationResult(data) {
+  if (data?.item) {
+    const cachedDraft = readClozeDraftCache(studyEntry.value.id);
+    const cachedAnswers = Number(cachedDraft?.setId) === Number(data.item.id)
+      ? (cachedDraft.answers || {})
+      : {};
+    clearClozeGenerationPending(studyEntry.value.id);
+    stopClozeGenerationPolling();
+    setClozePracticeSet(data.item, { answers: cachedAnswers });
+    clozePractice.loading = false;
+    clozePractice.loadingText = '';
+    await loadClozePracticeHistory();
+    return true;
+  }
+
+  if (data?.pending) {
+    writeClozeGenerationPending(studyEntry.value.id);
+    clozePractice.loading = true;
+    clozePractice.loadingText = data.loadingText || '正在准备完形填空...';
+    return false;
+  }
+
+  clearClozeGenerationPending(studyEntry.value.id);
+  stopClozeGenerationPolling();
+  clozePractice.loading = false;
+  clozePractice.loadingText = '';
+  if (data?.status === 'failed') {
+    clozePractice.error = data.error || '生成课文练习失败';
+  }
+  return false;
+}
+
+async function checkClozeGenerationStatus({ schedule = false } = {}) {
+  if (!studyEntry.value?.id) return;
+  try {
+    const data = await apiRequest(`/api/user/texts/${studyEntry.value.id}/cloze-practices/generation`, {
+      timeout: 30000
+    });
+    const completed = await applyClozeGenerationResult(data);
+    if (!completed && data?.pending && schedule) scheduleClozeGenerationPolling();
+  } catch (err) {
+    clozePractice.error = err instanceof ApiError ? err.message : '获取练习生成状态失败';
+    if (schedule && readClozeGenerationPending(studyEntry.value?.id)) scheduleClozeGenerationPolling(4000);
+  }
+}
+
+async function loadClozePracticeHistory() {
+  if (!studyEntry.value?.id) return;
+  clozePractice.cachedDraft = readClozeDraftCache(studyEntry.value.id);
+  clozePractice.historyLoading = true;
+  try {
+    const data = await apiRequest(`/api/user/texts/${studyEntry.value.id}/cloze-practices`, {
+      params: { limit: 30 },
+      timeout: 30000
+    });
+    clozePractice.historyRows = data.rows || [];
+  } catch (err) {
+    clozePractice.error = err instanceof ApiError ? err.message : '加载练习记录失败';
+  } finally {
+    clozePractice.historyLoading = false;
+  }
+}
+
+async function enterClozePractice() {
+  if (!studyEntry.value?.id) return;
+  clozePractice.open = true;
+  clozePractice.error = '';
+  clozePractice.loading = false;
+  clozePractice.loadingText = '';
+  clozePractice.currentSet = null;
+  clozePractice.currentAttempt = null;
+  resetClozeAnswers();
+  clozePractice.cachedDraft = readClozeDraftCache(studyEntry.value.id);
+  await loadClozePracticeHistory();
+  if (readClozeGenerationPending(studyEntry.value.id)) {
+    clozePractice.loading = true;
+    clozePractice.loadingText = '正在准备完形填空...';
+    await checkClozeGenerationStatus({ schedule: true });
+  }
+}
+
+function returnToReadingFromCloze() {
+  stopClozeGenerationPolling();
+  clozePractice.open = false;
+  clozePractice.error = '';
+  clozePractice.loading = false;
+  clozePractice.loadingText = '';
+  clozePractice.currentSet = null;
+  clozePractice.currentAttempt = null;
+  resetClozeAnswers();
+}
+
+function returnClozeHome() {
+  clozePractice.currentSet = null;
+  clozePractice.currentAttempt = null;
+  clozePractice.error = '';
+  resetClozeAnswers();
+  clozePractice.cachedDraft = readClozeDraftCache(studyEntry.value?.id);
+  loadClozePracticeHistory();
+}
+
+async function continueClozeDraft(draft) {
+  if (!draft?.setId) return false;
+  clozePractice.loading = true;
+  clozePractice.loadingText = '正在恢复未提交练习...';
+  try {
+    const data = await apiRequest(`/api/user/text-cloze-practice-sets/${draft.setId}`, {
+      timeout: 30000
+    });
+    if (data.submitted) {
+      clearClozeDraftCache(studyEntry.value?.id);
+      return false;
+    }
+    if (Number(data.item?.text_id) !== Number(studyEntry.value?.id)) {
+      clearClozeDraftCache(studyEntry.value?.id);
+      return false;
+    }
+    setClozePracticeSet(data.item, { answers: draft.answers || {} });
+    return true;
+  } catch (err) {
+    clearClozeDraftCache(studyEntry.value?.id);
+    return false;
+  } finally {
+    clozePractice.loading = false;
+    clozePractice.loadingText = '';
+  }
+}
+
+async function startClozePractice() {
+  if (!studyEntry.value?.id || clozePractice.loading) return;
+  clozePractice.error = '';
+
+  clozePractice.loading = true;
+  clozePractice.loadingText = '正在准备完形填空...';
+  writeClozeGenerationPending(studyEntry.value.id);
+  try {
+    const data = await apiRequest(`/api/user/texts/${studyEntry.value.id}/cloze-practices/start`, {
+      method: 'POST',
+      timeout: 30000
+    });
+    await applyClozeGenerationResult(data);
+    if (data?.pending) scheduleClozeGenerationPolling();
+  } catch (err) {
+    clozePractice.error = err instanceof ApiError ? err.message : '生成课文练习失败';
+    clearClozeGenerationPending(studyEntry.value.id);
+    stopClozeGenerationPolling();
+    clozePractice.loading = false;
+    clozePractice.loadingText = '';
+  } finally {
+    if (clozePractice.currentSet || !readClozeGenerationPending(studyEntry.value.id)) {
+      clozePractice.loading = false;
+      clozePractice.loadingText = '';
+    }
+  }
+}
+
+async function openClozeRecord(item) {
+  if (item?.isDraft) {
+    await continueClozeDraft(item.draft);
+    return;
+  }
+  const attempt = item?.attempt;
+  if (!attempt?.practice_set) return;
+  setClozePracticeSet(attempt.practice_set, {
+    answers: attempt.answers || {},
+    attempt
+  });
+}
+
+async function deleteClozeRecord(item) {
+  if (!item?.recordKey || clozePractice.deletingRecordKey) return;
+  if (!window.confirm('确定删除这条练习记录吗？删除后该题目可再次被复用。')) return;
+  clozePractice.deletingRecordKey = item.recordKey;
+  try {
+    if (item.isDraft) {
+      clearClozeDraftCache(studyEntry.value?.id);
+      if (
+        clozePractice.currentSet
+        && !clozePractice.currentAttempt
+        && Number(clozePractice.currentSet.id) === Number(item.draft?.setId)
+      ) {
+        returnClozeHome();
+      }
+      return;
+    }
+
+    await apiRequest(`/api/user/text-cloze-attempts/${item.attempt.id}`, {
+      method: 'DELETE',
+      timeout: 30000
+    });
+    if (Number(clozePractice.currentAttempt?.id) === Number(item.attempt.id)) {
+      returnClozeHome();
+    }
+    await loadClozePracticeHistory();
+  } catch (err) {
+    clozePractice.error = err instanceof ApiError ? err.message : '删除练习记录失败';
+  } finally {
+    clozePractice.deletingRecordKey = '';
+  }
+}
+
+async function submitClozePractice() {
+  if (!clozePractice.currentSet?.id || clozePractice.submitting) return;
+  if (clozeAnsweredCount.value < clozeQuestions.value.length) {
+    clozePractice.error = '请先完成所有题目';
+    return;
+  }
+  clozePractice.submitting = true;
+  clozePractice.error = '';
+  try {
+    const data = await apiRequest(`/api/user/text-cloze-practice-sets/${clozePractice.currentSet.id}/submit`, {
+      method: 'POST',
+      body: { answers: { ...clozeAnswers } },
+      timeout: 30000
+    });
+    const attempt = data.item;
+    clearClozeDraftCache(studyEntry.value?.id);
+    setClozePracticeSet(attempt.practice_set, {
+      answers: attempt.answers || {},
+      attempt
+    });
+    await loadClozePracticeHistory();
+  } catch (err) {
+    clozePractice.error = err instanceof ApiError ? err.message : '提交课文练习失败';
+  } finally {
+    clozePractice.submitting = false;
+  }
 }
 
 function normalizeMarkerText(value) {
@@ -914,6 +1645,7 @@ function toggleIdOrder() {
 }
 
 async function startStudy(item) {
+  resetClozePracticeState();
   studyEntry.value = item;
   studyVocabulary.value = [];
   studyGrammar.value = [];
@@ -1002,6 +1734,7 @@ async function refreshQuestionHistory() {
 
 function closeStudy() {
   activePopover.value = null;
+  resetClozePracticeState();
   studyEntry.value = null;
   studyVocabulary.value = [];
   studyGrammar.value = [];
@@ -1767,6 +2500,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   cancelHidePopover();
   cancelHideNotePreview();
+  stopClozeGenerationPolling();
   window.removeEventListener('mouseup', finishReadingSelectionDrag);
   window.removeEventListener('touchend', finishReadingSelectionDrag);
   window.removeEventListener('mousemove', handleNoteEditorDragMove);

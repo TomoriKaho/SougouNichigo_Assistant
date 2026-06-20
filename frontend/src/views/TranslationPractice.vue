@@ -92,14 +92,9 @@
               <article v-for="item in exerciseItems" :key="item.id" class="translation-question-card">
                 <div class="translation-question-header">
                   <h4>{{ currentPracticeTitle }}</h4>
-                  <button
-                    class="ghost translation-question-back-button"
-                    type="button"
-                    :disabled="generating || submitting || saving"
-                    @click="returnToPracticeHome"
-                  >
-                    返回
-                  </button>
+                  <span class="translation-status-pill" :class="`is-${currentPractice.status}`">
+                    {{ currentPractice.status === 'reviewed' ? '已批改' : '答题中' }}
+                  </span>
                 </div>
                 <div class="translation-exercise-meta">
                   <div class="translation-meta-row">
@@ -214,11 +209,15 @@
             <div class="translation-side-header">
               <div class="translation-work-title-group">
                 <h3>提问、批改与追问</h3>
-                <span class="translation-status-pill" :class="`is-${currentPractice.status}`">
-                  {{ currentPractice.status === 'reviewed' ? '已批改' : '答题中' }}
-                </span>
               </div>
-              <span>当前练习上下文</span>
+              <button
+                class="ghost translation-question-back-button"
+                type="button"
+                :disabled="generating || submitting || saving"
+                @click="returnToPracticeHome"
+              >
+                返回
+              </button>
             </div>
             <div class="translation-work-body">
               <div class="translation-chat-body">
@@ -705,8 +704,15 @@ function shortTextbookName(name) {
 
 function historyMetaLabel(item) {
   const direction = directionLabel(item?.exercise?.items?.[0]?.direction || selectedDirection.value);
+  const difficulty = practiceDifficultyLabel(item);
   const status = item?.status === 'reviewed' ? '已批改' : '未提交';
-  return `${shortTextbookName(item?.textbook_name)}/${direction}/${item?.range_label || '-'} ${status}`;
+  return `${shortTextbookName(item?.textbook_name)}/${direction}/${item?.range_label || '-'}/${difficulty} ${status}`;
+}
+
+function practiceDifficultyLabel(item) {
+  const label = String(item?.exercise?.difficulty_label || '').trim();
+  if (label) return label;
+  return item?.exercise?.difficulty_mode === 'hard' ? '困难' : '普通';
 }
 
 function targetGrammarForItem(item) {

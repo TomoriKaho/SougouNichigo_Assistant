@@ -13,6 +13,7 @@ const { Classroom } = require('../models/Classroom')
 const { authMiddleware, signUserToken, USER_JWT_EXPIRES_IN } = require('../middleware/auth')
 const assistantService = require('../services/assistantService')
 const emailCodeService = require('../services/emailCodeService')
+const textClozePracticeService = require('../services/textClozePracticeService')
 const translationPracticeService = require('../services/translationPracticeService')
 
 const USERNAME_PATTERN = /^[\p{L}\p{N}]{2,15}$/u
@@ -594,6 +595,74 @@ router.get('/texts/:id/study', authMiddleware, (req, res) => {
   const result = Text.studyById(req.params.id, req.user.id)
   if (!result) return res.status(404).json({ error: '课文条目不存在' })
   res.json(result)
+})
+
+router.get('/texts/:id/cloze-practices', authMiddleware, (req, res) => {
+  const item = Text.findById(req.params.id)
+  if (!item) return res.status(404).json({ error: '课文条目不存在' })
+  res.json(textClozePracticeService.listAttempts({
+    userId: req.user.id,
+    textId: req.params.id,
+    limit: parseLimit(req.query.limit, 20, 100),
+    offset: parseOffset(req.query.offset)
+  }))
+})
+
+router.post('/texts/:id/cloze-practices/start', authMiddleware, async (req, res) => {
+  try {
+    const result = await textClozePracticeService.startPractice({
+      userId: req.user.id,
+      textId: req.params.id
+    })
+    res.status(result.pending ? 202 : (result.reused ? 200 : 201)).json(result)
+  } catch (error) {
+    routeError(res, error, '生成课文练习失败')
+  }
+})
+
+router.get('/texts/:id/cloze-practices/generation', authMiddleware, (req, res) => {
+  try {
+    res.json(textClozePracticeService.generationStatus({
+      userId: req.user.id,
+      textId: req.params.id
+    }))
+  } catch (error) {
+    routeError(res, error, '获取课文练习生成状态失败')
+  }
+})
+
+router.get('/text-cloze-practice-sets/:id', authMiddleware, (req, res) => {
+  try {
+    res.json(textClozePracticeService.getSet({
+      userId: req.user.id,
+      setId: req.params.id
+    }))
+  } catch (error) {
+    routeError(res, error, '获取课文练习失败')
+  }
+})
+
+router.post('/text-cloze-practice-sets/:id/submit', authMiddleware, (req, res) => {
+  try {
+    res.status(201).json(textClozePracticeService.submitPractice({
+      userId: req.user.id,
+      setId: req.params.id,
+      answers: req.body.answers || {}
+    }))
+  } catch (error) {
+    routeError(res, error, '提交课文练习失败')
+  }
+})
+
+router.delete('/text-cloze-attempts/:id', authMiddleware, (req, res) => {
+  try {
+    res.json(textClozePracticeService.deleteAttempt({
+      userId: req.user.id,
+      attemptId: req.params.id
+    }))
+  } catch (error) {
+    routeError(res, error, '删除课文练习记录失败')
+  }
 })
 
 router.get('/texts/:id/notes', authMiddleware, (req, res) => {

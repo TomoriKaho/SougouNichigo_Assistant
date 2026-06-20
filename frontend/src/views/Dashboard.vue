@@ -212,7 +212,6 @@
         </div>
         <div class="dashboard-contact-body">
           <p>邮箱：2300018314@stu.pku.edu.cn</p>
-          <p>微信&电话：15651466403</p>
         </div>
       </div>
     </div>

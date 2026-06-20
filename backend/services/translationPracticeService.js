@@ -555,6 +555,21 @@ async function generatePractice({ userId, rangeKey, directionMode, difficultyMod
   const range = resolveRange(rangeKey)
   const normalizedDirectionMode = normalizeDirectionMode(directionMode)
   const normalizedDifficultyMode = normalizeDifficultyMode(difficultyMode)
+  const reusableSet = TranslationPractice.findReusableQuestionSet({
+    userId,
+    textbookId: range.textbookId,
+    rangeKey: range.rangeKey,
+    directionMode: normalizedDirectionMode,
+    difficultyMode: normalizedDifficultyMode
+  })
+  if (reusableSet) {
+    return TranslationPractice.createFromQuestionSet({
+      userId,
+      questionSet: reusableSet,
+      status: 'draft'
+    })
+  }
+
   const allGrammar = grammarForRange(range)
   if (allGrammar.length < 1) {
     const error = new Error('当前范围内文法数量不足，暂不能出题')
@@ -598,13 +613,20 @@ async function generatePractice({ userId, rangeKey, directionMode, difficultyMod
     throw error
   }
 
-  return TranslationPractice.create({
-    userId,
+  const questionSet = TranslationPractice.createQuestionSet({
+    createdBy: userId,
     ...range,
-    status: 'draft',
+    directionMode: normalizedDirectionMode,
+    difficultyMode: normalizedDifficultyMode,
     grammar,
     vocabulary: vocabularySample,
     exercise
+  })
+
+  return TranslationPractice.createFromQuestionSet({
+    userId,
+    questionSet,
+    status: 'draft'
   })
 }
 
