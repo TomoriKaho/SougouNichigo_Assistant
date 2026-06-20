@@ -109,11 +109,18 @@ class TextClozePractice {
     return mapSet(row)
   }
 
-  static findReusableSet({ textId, userId }) {
+  static findReusableSet({ textId, userId, excludeSetIds = [] }) {
+    const normalizedExcludeSetIds = [...new Set((excludeSetIds || [])
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id) && id > 0))]
+    const excludeClause = normalizedExcludeSetIds.length
+      ? `AND s.id NOT IN (${normalizedExcludeSetIds.map(() => '?').join(', ')})`
+      : ''
     const row = userDb.prepare(`
       SELECT s.*
       FROM text_cloze_practice_sets s
       WHERE s.text_id = ?
+        ${excludeClause}
         AND NOT EXISTS (
           SELECT 1
           FROM text_cloze_attempts a
@@ -122,7 +129,7 @@ class TextClozePractice {
         )
       ORDER BY datetime(s.created_at) ASC, s.id ASC
       LIMIT 1
-    `).get(Number(textId), Number(userId))
+    `).get(Number(textId), ...normalizedExcludeSetIds, Number(userId))
     return mapSet(row)
   }
 

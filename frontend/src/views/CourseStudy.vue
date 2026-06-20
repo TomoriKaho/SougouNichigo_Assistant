@@ -879,6 +879,11 @@ function clearClozeGenerationPending(textId = studyEntry.value?.id) {
   }
 }
 
+function clozeExcludedReusableSetIds(textId = studyEntry.value?.id) {
+  const draft = readClozeDraftCache(textId);
+  return draft?.setId ? [Number(draft.setId)] : [];
+}
+
 function stopClozeGenerationPolling() {
   if (!clozeGenerationPollTimer) return;
   window.clearTimeout(clozeGenerationPollTimer);
@@ -1090,6 +1095,9 @@ async function checkClozeGenerationStatus({ schedule = false } = {}) {
   if (!studyEntry.value?.id) return;
   try {
     const data = await apiRequest(`/api/user/texts/${studyEntry.value.id}/cloze-practices/generation`, {
+      params: {
+        excludeSetIds: clozeExcludedReusableSetIds(studyEntry.value.id).join(',')
+      },
       timeout: 30000
     });
     const completed = await applyClozeGenerationResult(data);
@@ -1192,6 +1200,9 @@ async function startClozePractice() {
   try {
     const data = await apiRequest(`/api/user/texts/${studyEntry.value.id}/cloze-practices/start`, {
       method: 'POST',
+      body: {
+        excludeSetIds: clozeExcludedReusableSetIds(studyEntry.value.id)
+      },
       timeout: 30000
     });
     await applyClozeGenerationResult(data);

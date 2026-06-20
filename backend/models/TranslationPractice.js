@@ -111,7 +111,6 @@ class TranslationPractice {
           FROM translation_practices p
           WHERE p.user_id = ?
             AND p.question_set_id = s.id
-            AND p.status = 'reviewed'
         )
       ORDER BY datetime(s.created_at) ASC, s.id ASC
       LIMIT 1

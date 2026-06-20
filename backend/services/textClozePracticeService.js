@@ -380,7 +380,7 @@ function generationPrompt({ study, markers, user }) {
 你是一名专业的日语课文理解练习出题教师，面向中文母语者。
 你必须只输出一个 JSON 对象，不要输出 markdown，不要解释 JSON 以外的内容。
 你要根据课文上下文设计完形填空题，重点考查课文理解、关键词、重要副词、逻辑关联词、呼应表达和文法现象。
-题目必须能从上下文推出唯一答案，不能靠孤立背词或硬猜。不要挖专有名词、人名、地名、纯语气词、过于机械的助词或没有理解价值的片段。
+题目必须能从上下文推出唯一答案，不能靠孤立背词或硬猜。避免挖专有名词、人名、地名、语气词、过于机械的助词或没有理解价值的片段。
 `.trim()
     },
     {
@@ -398,17 +398,19 @@ function generationPrompt({ study, markers, user }) {
 【课文全文】
 ${markers.text}
 
-【优先从以下“已在课文中实际出现的高亮词汇/文法候选”里挖空】
+【本课重点词汇语法】
 ${candidateLines || '-'}
 
 【出题要求】
 1. 目标生成 ${TARGET_QUESTION_COUNT} 题；如果课文本身高质量候选不足，可以少于 ${TARGET_QUESTION_COUNT} 题，但不要为了凑数选择低价值片段。
 2. 每道题只能选择一个 candidate_id；不支持非连续挖空。较长但连续的固定表达可以整体挖空。
-3. 挖空对象要优先选择对理解上下文有意义的关键词、重要副词、关联词、文法现象、句间逻辑表达。
+3. 挖空对象要优先选择对理解上下文有意义的关键词、重要副词、逻辑关联词、重要文法现象、句间逻辑表达、拟声拟态词等。
 4. 选项必须是日语原文形式，A/B/C/D 四个选项必须互不相同，且只有一个正确答案。
-5. 错误选项要有迷惑性，比如常见的语法误用等作为错误选项，但是要保证错误选项在当前上下文中不成立。
+5. 错误选项可以用常见的语法误用等作为错误选项，但是不能用太过细微的语气差异，要保证错误选项在当前上下文中不成立，不能成为正确答案。
 6. 不需要解析，不要输出答案解释。
-7. candidate_id 必须来自上面的候选列表；answer 必须等于该候选的原文片段。
+7. 避免挖专有名词、人名、地名、语气词、过于机械的助词或没有理解价值的片段。
+8. 本课重点词汇语法仅作参考，不要局限于这些候选，积极在上下文中挖掘其他有价值的片段，没有价值的词汇也不要挖空。
+9. candidate_id 必须来自上面的候选列表；answer 必须等于该候选的原文片段。
 
 【必须严格输出以下 JSON 形状】
 {
@@ -627,8 +629,15 @@ function startGenerationJob({ userId, textId }) {
   return job
 }
 
-async function startPractice({ userId, textId }) {
-  const existing = TextClozePractice.findReusableSet({ textId, userId })
+function normalizeExcludeSetIds(value) {
+  return [...new Set((Array.isArray(value) ? value : [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id > 0))]
+}
+
+async function startPractice({ userId, textId, excludeSetIds = [] }) {
+  const normalizedExcludeSetIds = normalizeExcludeSetIds(excludeSetIds)
+  const existing = TextClozePractice.findReusableSet({ textId, userId, excludeSetIds: normalizedExcludeSetIds })
   if (existing) {
     return {
       item: publicSet(existing),
@@ -644,8 +653,9 @@ async function startPractice({ userId, textId }) {
   return pendingGenerationResult(startGenerationJob({ userId, textId }))
 }
 
-function generationStatus({ userId, textId }) {
-  const existing = TextClozePractice.findReusableSet({ textId, userId })
+function generationStatus({ userId, textId, excludeSetIds = [] }) {
+  const normalizedExcludeSetIds = normalizeExcludeSetIds(excludeSetIds)
+  const existing = TextClozePractice.findReusableSet({ textId, userId, excludeSetIds: normalizedExcludeSetIds })
   if (existing) {
     return {
       item: publicSet(existing),

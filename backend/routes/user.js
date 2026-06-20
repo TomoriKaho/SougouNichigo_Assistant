@@ -612,7 +612,8 @@ router.post('/texts/:id/cloze-practices/start', authMiddleware, async (req, res)
   try {
     const result = await textClozePracticeService.startPractice({
       userId: req.user.id,
-      textId: req.params.id
+      textId: req.params.id,
+      excludeSetIds: req.body.excludeSetIds || []
     })
     res.status(result.pending ? 202 : (result.reused ? 200 : 201)).json(result)
   } catch (error) {
@@ -624,7 +625,11 @@ router.get('/texts/:id/cloze-practices/generation', authMiddleware, (req, res) =
   try {
     res.json(textClozePracticeService.generationStatus({
       userId: req.user.id,
-      textId: req.params.id
+      textId: req.params.id,
+      excludeSetIds: String(req.query.excludeSetIds || '')
+        .split(',')
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id) && id > 0)
     }))
   } catch (error) {
     routeError(res, error, '获取课文练习生成状态失败')
