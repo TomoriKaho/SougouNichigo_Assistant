@@ -44,20 +44,15 @@
                   </option>
                 </select>
               </label>
-              <div class="translation-control-range translation-slider-control">
+              <label class="translation-control-range">
                 <span>范围</span>
-                <div class="translation-segmented-slider" role="group" aria-label="范围">
-                  <button
-                    v-for="range in rangeOptions"
-                    :key="range.rangeKey"
-                    type="button"
-                    :class="{ active: selectedRangeKey === range.rangeKey }"
-                    @click="selectedRangeKey = range.rangeKey"
-                  >
+                <select v-model="selectedRangeKey" :disabled="!selectedTextbookId">
+                  <option value="">请选择</option>
+                  <option v-for="range in rangeOptions" :key="range.rangeKey" :value="range.rangeKey">
                     {{ range.rangeLabel }}
-                  </button>
-                </div>
-              </div>
+                  </option>
+                </select>
+              </label>
               <div class="translation-control-type translation-slider-control">
                 <span>类型</span>
                 <div class="translation-segmented-slider" role="group" aria-label="类型">
@@ -317,7 +312,7 @@ const reviewMarkdownRenderer = new MarkdownIt({
 
 const ranges = ref([]);
 const selectedTextbookId = ref('');
-const selectedRangeKey = ref('upper');
+const selectedRangeKey = ref('');
 const selectedDirection = ref('jp_to_zh');
 const selectedDifficulty = ref('normal');
 const currentPractice = ref(null);
@@ -378,7 +373,7 @@ const visibleRanges = computed(() => {
 });
 
 const rangeOptions = computed(() => {
-  const source = visibleRanges.value.length ? visibleRanges.value : ranges.value;
+  const source = selectedTextbookId.value ? visibleRanges.value : [];
   const map = new Map();
   source.forEach((range) => {
     map.set(range.rangeKey, {
@@ -386,10 +381,7 @@ const rangeOptions = computed(() => {
       rangeLabel: range.rangeLabel
     });
   });
-  return Array.from(map.values()).sort((left, right) => {
-    if (left.rangeKey === right.rangeKey) return 0;
-    return left.rangeKey === 'upper' ? -1 : 1;
-  });
+  return Array.from(map.values());
 });
 
 const currentPracticeHeaderLabel = computed(() => {
@@ -654,7 +646,7 @@ function writeStartSelectionCache() {
   try {
     localStorage.setItem(START_SELECTION_CACHE_KEY, JSON.stringify({
       textbookId: selectedTextbookId.value || '',
-      rangeKey: selectedRangeKey.value || 'upper',
+      rangeKey: selectedRangeKey.value || '',
       direction: selectedDirection.value || 'jp_to_zh',
       difficulty: selectedDifficulty.value || 'normal'
     }));
@@ -831,6 +823,11 @@ async function generatePractice() {
     showToast('请先选择课本', 'error');
     return;
   }
+  if (!selectedRangeKey.value) {
+    error.value = '';
+    showToast('请先选择范围', 'error');
+    return;
+  }
   generating.value = true;
   error.value = '';
   try {
@@ -986,6 +983,13 @@ onBeforeUnmount(() => {
 
 watch(currentPracticeHeaderLabel, () => {
   updateTranslationTopbar();
+});
+
+watch(selectedTextbookId, () => {
+  if (!selectedRangeKey.value) return;
+  if (!visibleRanges.value.some((range) => range.rangeKey === selectedRangeKey.value)) {
+    selectedRangeKey.value = '';
+  }
 });
 
 watch(

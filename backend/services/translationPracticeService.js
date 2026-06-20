@@ -89,14 +89,25 @@ function currentFourthBook() {
 }
 
 function fourthBookMaxLesson() {
-  const row = grammarDb.prepare(`
-    SELECT MAX(l.lesson_number) AS max_lesson
-    FROM grammar_entries g
-    JOIN textbooks t ON t.id = g.textbook_id
-    JOIN lessons l ON l.id = g.lesson_id
+  const row = textDb.prepare(`
+    SELECT MAX(e.lesson_number) AS max_lesson
+    FROM text_entries e
+    JOIN textbooks t ON t.id = e.textbook_id
     WHERE t.name = ?
   `).get(FOURTH_BOOK_NAME)
   return Number(row?.max_lesson || 10)
+}
+
+function fourthBookLessonNumbers() {
+  return textDb.prepare(`
+    SELECT DISTINCT e.lesson_number
+    FROM text_entries e
+    JOIN textbooks t ON t.id = e.textbook_id
+    WHERE t.name = ?
+    ORDER BY e.lesson_number ASC
+  `).all(FOURTH_BOOK_NAME)
+    .map((row) => Number(row.lesson_number))
+    .filter((lessonNumber) => Number.isFinite(lessonNumber) && lessonNumber > 0)
 }
 
 function resolveRange(rangeKey = 'upper') {
@@ -109,7 +120,28 @@ function resolveRange(rangeKey = 'upper') {
 
   const maxLesson = fourthBookMaxLesson()
   const split = Math.ceil(maxLesson / 2)
-  const normalized = rangeKey === 'lower' ? 'lower' : 'upper'
+  const rawRangeKey = String(rangeKey || '').trim()
+  const lessonMatch = rawRangeKey.match(/^lesson:(\d+)$/)
+  if (lessonMatch) {
+    const lessonNumber = Number(lessonMatch[1])
+    if (!fourthBookLessonNumbers().includes(lessonNumber)) {
+      const error = new Error('所选课次不存在')
+      error.status = 400
+      throw error
+    }
+    const halfKey = lessonNumber > split ? 'lower' : 'upper'
+    return {
+      textbookId: textbook.id,
+      textbookName: textbook.name,
+      rangeKey: `lesson:${lessonNumber}`,
+      rangeLabel: `第${lessonNumber}课`,
+      lessonMin: lessonNumber,
+      lessonMax: lessonNumber,
+      abilityLabel: ABILITY_BY_RANGE[rangeKeyFor(textbook.name, halfKey)] || 'N2以内'
+    }
+  }
+
+  const normalized = rawRangeKey === 'lower' ? 'lower' : 'upper'
   const lessonMin = normalized === 'lower' ? split + 1 : 1
   const lessonMax = normalized === 'lower' ? maxLesson : split
   const rangeLabel = normalized === 'lower' ? '下半' : '上半'
@@ -128,10 +160,12 @@ function resolveRange(rangeKey = 'upper') {
 function listRangeOptions() {
   const range = resolveRange('upper')
   const lower = resolveRange('lower')
+  const lessons = fourthBookLessonNumbers().map((lessonNumber) => resolveRange(`lesson:${lessonNumber}`))
   return {
     ranges: [
       { ...range, label: `${range.textbookName} ${range.rangeLabel}` },
-      { ...lower, label: `${lower.textbookName} ${lower.rangeLabel}` }
+      { ...lower, label: `${lower.textbookName} ${lower.rangeLabel}` },
+      ...lessons.map((lesson) => ({ ...lesson, label: `${lesson.textbookName} ${lesson.rangeLabel}` }))
     ],
     abilityModel: [
       { range: '综合日语第一册上半', ability: 'N5以内' },
@@ -231,6 +265,12 @@ function difficultyLabel(difficultyMode) {
   return difficultyMode === 'hard' ? '困难' : '普通'
 }
 
+function rangeLessonSummary(range) {
+  return Number(range.lessonMin) === Number(range.lessonMax)
+    ? `第${range.lessonMin}课`
+    : `第${range.lessonMin}-${range.lessonMax}课`
+}
+
 function generationPrompt({ range, user, grammar, vocabulary, textSamples, directionMode, difficultyMode }) {
   const userGrade = clean(user?.grade)
   const gradeHint = STUDENT_GRADE_HINTS[userGrade] || '未提供年级，按所选教材范围控制'
@@ -270,7 +310,7 @@ JSON 顶层必须包含 items 数组，items 数组必须恰好 1 个对象。
 
 【教材范围】
 - 教材：${range.textbookName}
-- 范围：${range.rangeLabel}（第${range.lessonMin}-${range.lessonMax}课）
+- 范围：${range.rangeLabel}（${rangeLessonSummary(range)}）
 - 难度上限：${range.abilityLabel}
 - 练习难度：${difficultyLabel(difficulty)}
 - 当前用户年级：${userGrade}
@@ -287,9 +327,9 @@ ${vocabularyLines || '-'}
 2. ${lengthRequirement}
 3. 题目可以有文学性，但首先要自然、顺畅、清楚；避免纯口语闲聊，也不要为了使用目标文法或词汇而牺牲可读性。
 4. 如果是汉译日题，必须列出“本题目标文法”，只写文法和接续，不写中文意思。
-5. 这一题必须尽量自然覆盖全部目标文法；不要机械堆叠。
+5. 这一题必须尽量自然覆盖全部目标文法；如果目标文法少于 3 个，就覆盖当前给出的全部文法；不要机械堆叠。
 6. 鼓励参考现实文学作品进行改编或仿写氛围，但不得直接复现原文；如参考了具体作品，把“参考：作者《作品名》”写进 title 的括号中，不要新增字段。
-7. 如果使用明显超出所选范围或难度上限的词汇/表达，在 advanced_notes 只标注词和中文释义；不要写原因。这个判断只作学习提示，不必追求绝对完整。
+7. advanced_notes 只用于标注你认为会超出用户年级和练习难度的词汇/表达；目标文法和范围内的单词不需要标注；对于可以直接从题目上下文推断意思的，或是容易从汉字可以判断中文意思的也不用标注；标注时只写词和中文释义，不要写原因。
 8. 已录入词汇只是帮助控制教材氛围的轻量参考，不是覆盖目标；最多自然吸收少量词汇，不要让题目满篇都是词汇表中的词，也不要为了用词牺牲表达。
 
 【必须严格输出以下 JSON 形状，不能省略 items】
@@ -516,12 +556,12 @@ async function generatePractice({ userId, rangeKey, directionMode, difficultyMod
   const normalizedDirectionMode = normalizeDirectionMode(directionMode)
   const normalizedDifficultyMode = normalizeDifficultyMode(difficultyMode)
   const allGrammar = grammarForRange(range)
-  if (allGrammar.length < 3) {
+  if (allGrammar.length < 1) {
     const error = new Error('当前范围内文法数量不足，暂不能出题')
     error.status = 400
     throw error
   }
-  const grammar = pickItems(allGrammar, 3)
+  const grammar = pickItems(allGrammar, Math.min(3, allGrammar.length))
   const vocabulary = vocabularyForRange(range)
   const vocabularySample = pickItems(vocabulary, Math.min(12, vocabulary.length))
   const textSamples = textSamplesForRange(range)
