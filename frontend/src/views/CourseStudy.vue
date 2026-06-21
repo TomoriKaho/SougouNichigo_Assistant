@@ -557,10 +557,12 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { apiRequest, ApiError } from '../utils/apiClient';
 import { useAuth } from '../composables/useAuth';
+
+defineOptions({ name: 'CourseStudy' });
 
 const { state: authState, logout } = useAuth();
 const router = useRouter();
@@ -594,6 +596,7 @@ const activeNoteId = ref(null);
 const activeQuestionConversationId = ref(null);
 const noteSaving = ref(false);
 const assistantOpening = ref(false);
+const courseStudyActive = ref(false);
 const popoverPosition = reactive({ x: 0, y: 0 });
 const selectionActionsPosition = reactive({ x: 0, y: 0 });
 const toast = reactive({ visible: false, message: '', type: 'info' });
@@ -604,6 +607,7 @@ let hidePopoverTimer = 0;
 let hideNotePreviewTimer = 0;
 let clozeGenerationPollTimer = 0;
 let noteEditorDragState = null;
+let courseStudyWindowListenersAttached = false;
 
 const noteEditor = reactive({
   open: false,
@@ -764,6 +768,28 @@ function showToast(message, type = 'info') {
   toast.type = type;
   toast.visible = true;
   setTimeout(() => (toast.visible = false), 1600);
+}
+
+function attachCourseStudyWindowListeners() {
+  if (courseStudyWindowListenersAttached) return;
+  window.addEventListener('mouseup', finishReadingSelectionDrag);
+  window.addEventListener('touchend', finishReadingSelectionDrag);
+  window.addEventListener('mousemove', handleNoteEditorDragMove);
+  window.addEventListener('mouseup', stopNoteEditorDrag);
+  window.addEventListener('mousedown', handleNoteEditorOutsideMouseDown);
+  window.addEventListener('assistant:conversation-updated', handleAssistantConversationUpdated);
+  courseStudyWindowListenersAttached = true;
+}
+
+function detachCourseStudyWindowListeners() {
+  if (!courseStudyWindowListenersAttached) return;
+  window.removeEventListener('mouseup', finishReadingSelectionDrag);
+  window.removeEventListener('touchend', finishReadingSelectionDrag);
+  window.removeEventListener('mousemove', handleNoteEditorDragMove);
+  window.removeEventListener('mouseup', stopNoteEditorDrag);
+  window.removeEventListener('mousedown', handleNoteEditorOutsideMouseDown);
+  window.removeEventListener('assistant:conversation-updated', handleAssistantConversationUpdated);
+  courseStudyWindowListenersAttached = false;
 }
 
 function handleApiError(err) {
@@ -2489,16 +2515,13 @@ watch(() => filters.textbookId, () => {
 });
 
 watch(courseReadingMeta, (title) => {
+  if (!courseStudyActive.value) return;
   updateTopbarTitle(title);
 });
 
 onMounted(async () => {
-  window.addEventListener('mouseup', finishReadingSelectionDrag);
-  window.addEventListener('touchend', finishReadingSelectionDrag);
-  window.addEventListener('mousemove', handleNoteEditorDragMove);
-  window.addEventListener('mouseup', stopNoteEditorDrag);
-  window.addEventListener('mousedown', handleNoteEditorOutsideMouseDown);
-  window.addEventListener('assistant:conversation-updated', handleAssistantConversationUpdated);
+  courseStudyActive.value = true;
+  attachCourseStudyWindowListeners();
   try {
     await loadOptions();
     await refresh();
@@ -2512,12 +2535,21 @@ onBeforeUnmount(() => {
   cancelHidePopover();
   cancelHideNotePreview();
   stopClozeGenerationPolling();
-  window.removeEventListener('mouseup', finishReadingSelectionDrag);
-  window.removeEventListener('touchend', finishReadingSelectionDrag);
-  window.removeEventListener('mousemove', handleNoteEditorDragMove);
-  window.removeEventListener('mouseup', stopNoteEditorDrag);
-  window.removeEventListener('mousedown', handleNoteEditorOutsideMouseDown);
-  window.removeEventListener('assistant:conversation-updated', handleAssistantConversationUpdated);
+  detachCourseStudyWindowListeners();
+  updateTopbarTitle('');
+});
+
+onActivated(() => {
+  courseStudyActive.value = true;
+  attachCourseStudyWindowListeners();
+  updateTopbarTitle(courseReadingMeta.value);
+});
+
+onDeactivated(() => {
+  courseStudyActive.value = false;
+  cancelHidePopover();
+  cancelHideNotePreview();
+  detachCourseStudyWindowListeners();
   updateTopbarTitle('');
 });
 </script>

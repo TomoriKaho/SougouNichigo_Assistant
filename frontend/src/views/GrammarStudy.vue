@@ -162,6 +162,8 @@ import { useRoute, useRouter } from 'vue-router';
 import { apiRequest, ApiError } from '../utils/apiClient';
 import { useAuth } from '../composables/useAuth';
 
+defineOptions({ name: 'GrammarStudy' });
+
 const { logout } = useAuth();
 const router = useRouter();
 const route = useRoute();

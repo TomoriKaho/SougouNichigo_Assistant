@@ -203,10 +203,12 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { apiRequest, ApiError } from '../utils/apiClient';
 import { useAuth } from '../composables/useAuth';
+
+defineOptions({ name: 'WordStudy' });
 
 const { logout } = useAuth();
 const router = useRouter();
@@ -243,6 +245,7 @@ const filters = reactive({
   favoritesOnly: false,
   keyOnly: false
 });
+let resizeListenerAttached = false;
 
 const textbooks = computed(() => options.value.textbooks || []);
 const selectedTextbook = computed(() => textbooks.value.find((item) => Number(item.id) === Number(filters.textbookId)) || null);
@@ -410,6 +413,18 @@ async function measureCardScrollbars() {
   scrollableEntryIds.value = nextScrollableIds;
 }
 
+function attachResizeListener() {
+  if (resizeListenerAttached) return;
+  window.addEventListener('resize', measureCardScrollbars);
+  resizeListenerAttached = true;
+}
+
+function detachResizeListener() {
+  if (!resizeListenerAttached) return;
+  window.removeEventListener('resize', measureCardScrollbars);
+  resizeListenerAttached = false;
+}
+
 watch(() => filters.textbookId, () => {
   filters.lessonScope = 'all';
   filters.unitId = 0;
@@ -443,7 +458,7 @@ watch(() => filters.keyOnly, () => {
 });
 
 onMounted(async () => {
-  window.addEventListener('resize', measureCardScrollbars);
+  attachResizeListener();
   try {
     await loadOptions();
     await refresh();
@@ -454,10 +469,15 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', measureCardScrollbars);
+  detachResizeListener();
 });
 
 onActivated(() => {
+  attachResizeListener();
   measureCardScrollbars();
+});
+
+onDeactivated(() => {
+  detachResizeListener();
 });
 </script>

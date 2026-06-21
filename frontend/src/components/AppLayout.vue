@@ -58,8 +58,8 @@
       </header>
       <main ref="contentRef" class="content">
         <router-view v-slot="{ Component }">
-          <KeepAlive include="TranslationPractice">
-            <component :is="Component" />
+          <KeepAlive :include="cachedStudyPageNames">
+            <component :is="Component" :key="routeViewKey" />
           </KeepAlive>
         </router-view>
         <div
@@ -435,6 +435,13 @@ markdownRenderer.renderer.rules.link_open = (tokens, idx, options, env, self) =>
 };
 const contentRef = ref(null);
 const sidebarCollapsed = ref(false);
+const studyPageCacheVersions = reactive({
+  CourseStudy: 0,
+  WordStudy: 0,
+  GrammarStudy: 0,
+  TranslationPractice: 0
+});
+const cachedStudyPageNames = Object.freeze(Object.keys(studyPageCacheVersions));
 const feedbackOpen = ref(false);
 const feedbackSaving = ref(false);
 const feedbackError = ref('');
@@ -476,6 +483,14 @@ const assistantStreamRender = reactive({
   running: false,
   completionPromise: null,
   resolveCompletion: null
+});
+
+const routeViewKey = computed(() => {
+  const routeName = String(route.name || '');
+  if (Object.prototype.hasOwnProperty.call(studyPageCacheVersions, routeName)) {
+    return `${routeName}:${studyPageCacheVersions[routeName]}`;
+  }
+  return route.fullPath;
 });
 const assistantResizeDirections = ['n', 'e', 's', 'w', 'ne', 'nw', 'se', 'sw'];
 const assistantOrbSize = 96;
@@ -2213,8 +2228,29 @@ async function submitFeedback() {
 
 function handleLogout() {
   clearAssistantTimers();
+  resetAllStudyPageCaches();
   logout();
   router.push({ name: 'Login' });
+}
+
+function resetStudyPageCache(pageName) {
+  if (!Object.prototype.hasOwnProperty.call(studyPageCacheVersions, pageName)) return;
+  studyPageCacheVersions[pageName] += 1;
+}
+
+function resetAllStudyPageCaches() {
+  cachedStudyPageNames.forEach((pageName) => {
+    resetStudyPageCache(pageName);
+  });
+}
+
+function handleStudyCacheResetEvent(event) {
+  const pageName = event?.detail?.pageName || event?.detail?.name || 'all';
+  if (pageName === 'all') {
+    resetAllStudyPageCaches();
+    return;
+  }
+  resetStudyPageCache(pageName);
 }
 
 onMounted(() => {
@@ -2225,6 +2261,7 @@ onMounted(() => {
   window.addEventListener('assistant:open-conversation', handleAssistantOpenConversationEvent);
   window.addEventListener('assistant:docking-changed', handleAssistantDockingChange);
   window.addEventListener('topbar:title-override', handleTopbarTitleOverride);
+  window.addEventListener('study-cache:reset', handleStudyCacheResetEvent);
 });
 
 watch(showAssistantOrb, (visible) => {
@@ -2272,5 +2309,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('assistant:open-conversation', handleAssistantOpenConversationEvent);
   window.removeEventListener('assistant:docking-changed', handleAssistantDockingChange);
   window.removeEventListener('topbar:title-override', handleTopbarTitleOverride);
+  window.removeEventListener('study-cache:reset', handleStudyCacheResetEvent);
 });
 </script>
