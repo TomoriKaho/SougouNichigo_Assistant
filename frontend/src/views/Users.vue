@@ -59,6 +59,7 @@
               <th class="col-type">年级</th>
               <th class="col-role">角色</th>
               <th class="col-created-at">创建时间</th>
+              <th class="col-last-login">上次登录时间</th>
               <th class="col-actions"><span class="col-actions-label">操作</span></th>
             </tr>
           </thead>
@@ -75,6 +76,7 @@
                 <span class="tag" :class="user.role">{{ roleLabel(user.role) }}</span>
               </td>
               <td class="col-created-at">{{ formatDate(user.created_at) }}</td>
+              <td class="col-last-login">{{ formatDate(user.last_login_at) }}</td>
               <td class="actions">
                 <div class="actions-group">
                   <button class="ghost" :disabled="!canEdit(user)" :title="editDisabledReason(user)" @click="openEdit(user)">编辑</button>
@@ -83,7 +85,7 @@
               </td>
             </tr>
             <tr v-if="!users.length">
-              <td colspan="8" class="empty">暂无用户数据</td>
+              <td colspan="9" class="empty">暂无用户数据</td>
             </tr>
           </tbody>
         </table>

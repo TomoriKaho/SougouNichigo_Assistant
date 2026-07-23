@@ -139,7 +139,7 @@ class User {
 
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
     const rows = userDb.prepare(`
-      SELECT id, username, email, user_type, grade, role, is_initial_admin, is_initial_dev, created_at, updated_at
+      SELECT id, username, email, user_type, grade, role, is_initial_admin, is_initial_dev, last_login_at, created_at, updated_at
       , share_context_chats
       FROM users
       ${where}
@@ -215,6 +215,15 @@ class User {
 
   static delete(id) {
     return userDb.prepare('DELETE FROM users WHERE id = ?').run(id)
+  }
+
+  static markLogin(id) {
+    return userDb.prepare(`
+      UPDATE users
+      SET last_login_at = datetime('now', 'localtime'),
+          updated_at = datetime('now', 'localtime')
+      WHERE id = ?
+    `).run(id)
   }
 
   static clearInitialDevExcept(id) {

@@ -246,10 +246,12 @@ router.post('/register', (req, res) => {
       grade
     })
     emailCodeService.consumeCode(verification.id)
+    User.markLogin(id)
+    const updatedUser = User.findRawById(id)
     const publicUser = User.findById(id)
     res.status(201).json({
       success: true,
-      token: signUserToken(User.findRawById(id)),
+      token: signUserToken(updatedUser),
       expiresIn: USER_JWT_EXPIRES_IN,
       user: publicUser
     })
@@ -283,10 +285,12 @@ router.post('/login', (req, res) => {
     return res.status(401).json({ success: false, error: '账号或密码错误' })
   }
 
+  User.markLogin(user.id)
+  const updatedUser = User.findRawById(user.id)
   const publicUser = User.findById(user.id)
   res.json({
     success: true,
-    token: signUserToken(user),
+    token: signUserToken(updatedUser),
     expiresIn: USER_JWT_EXPIRES_IN,
     user: publicUser
   })
@@ -314,10 +318,12 @@ router.post('/login/email-code', (req, res) => {
   }
 
   emailCodeService.consumeCode(verification.id)
+  User.markLogin(user.id)
+  const updatedUser = User.findRawById(user.id)
   const publicUser = User.findById(user.id)
   res.json({
     success: true,
-    token: signUserToken(user),
+    token: signUserToken(updatedUser),
     expiresIn: USER_JWT_EXPIRES_IN,
     user: publicUser
   })

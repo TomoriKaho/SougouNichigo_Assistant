@@ -61,6 +61,7 @@ function initUserDatabase() {
       role TEXT DEFAULT 'user',
       is_initial_admin INTEGER DEFAULT 0,
       is_initial_dev INTEGER DEFAULT 0,
+      last_login_at TEXT,
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     )
@@ -73,6 +74,7 @@ function initUserDatabase() {
   ensureColumn(userDb, 'users', 'role', "role TEXT DEFAULT 'user'")
   ensureColumn(userDb, 'users', 'is_initial_admin', 'is_initial_admin INTEGER DEFAULT 0')
   ensureColumn(userDb, 'users', 'is_initial_dev', 'is_initial_dev INTEGER DEFAULT 0')
+  ensureColumn(userDb, 'users', 'last_login_at', 'last_login_at TEXT')
   ensureColumn(userDb, 'users', 'updated_at', "updated_at TEXT")
 
   userDb.exec(`
