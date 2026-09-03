@@ -91,6 +91,12 @@
                     <button class="ghost" @click.stop="loadDetail(item.id, true)">重试</button>
                   </div>
                   <div v-else-if="detailById[item.id]" class="grammar-study-detail">
+                    <div
+                      v-if="detailById[item.id].content_markdown"
+                      class="grammar-study-markdown"
+                      v-html="grammarMarkdownHtml(detailById[item.id].content_markdown)"
+                    ></div>
+                    <template v-else>
                     <div class="grammar-study-detail-section grammar-study-inline-section">
                       <span class="detail-label">意义</span>
                       <p>{{ detailById[item.id].meaning || '-' }}</p>
@@ -114,6 +120,7 @@
                       </ol>
                       <p v-else>-</p>
                     </div>
+                    </template>
                   </div>
                 </td>
               </tr>
@@ -158,6 +165,7 @@
 
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
+import MarkdownIt from 'markdown-it';
 import { useRoute, useRouter } from 'vue-router';
 import { apiRequest, ApiError } from '../utils/apiClient';
 import { useAuth } from '../composables/useAuth';
@@ -185,6 +193,19 @@ const detailErrors = reactive({});
 const toast = reactive({ visible: false, message: '', type: 'info' });
 const focusGrammarId = ref(0);
 const applyingRouteFocus = ref(false);
+const markdownRenderer = new MarkdownIt({
+  html: false,
+  breaks: true,
+  linkify: false,
+  typographer: false
+});
+
+markdownRenderer.renderer.rules.table_open = () => '<div class="grammar-study-markdown-table-scroll"><table>\n';
+markdownRenderer.renderer.rules.table_close = () => '</table></div>\n';
+
+function grammarMarkdownHtml(value) {
+  return markdownRenderer.render(String(value || ''));
+}
 
 const filters = reactive({
   textbookId: 0,
@@ -200,8 +221,19 @@ const selectedLesson = computed(() => lessonOptions.value.find((item) => Number(
 const unitOptions = computed(() => (selectedLesson.value ? selectedLesson.value.units || [] : []));
 const lessonFilterAll = computed(() => !selectedLesson.value);
 const lessonRange = computed(() => {
-  if (filters.lessonScope === 'firstHalf') return { min: 1, max: 5 };
-  if (filters.lessonScope === 'secondHalf') return { min: 6, max: 10 };
+  const lessonNumbers = lessonOptions.value
+    .map((lesson) => Number(lesson.lesson_number || 0))
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+  if (!lessonNumbers.length) return { min: '', max: '' };
+
+  const splitLessonNumber = Math.ceil(lessonNumbers[lessonNumbers.length - 1] / 2);
+  if (filters.lessonScope === 'firstHalf') {
+    return { min: lessonNumbers[0], max: splitLessonNumber };
+  }
+  if (filters.lessonScope === 'secondHalf') {
+    return { min: splitLessonNumber + 1, max: lessonNumbers[lessonNumbers.length - 1] };
+  }
   return { min: '', max: '' };
 });
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));

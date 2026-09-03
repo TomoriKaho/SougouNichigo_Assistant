@@ -542,7 +542,8 @@ router.put('/grammar/:id', requireAdmin, (req, res) => {
     translation: req.body.translation,
     formation: req.body.formation,
     notes: req.body.notes,
-    examples: req.body.examples
+    examples: req.body.examples,
+    content_markdown: req.body.content_markdown
   })
   res.json({ success: true })
 })

@@ -173,6 +173,10 @@
               说明
               <textarea v-model="form.notes" rows="3"></textarea>
             </label>
+            <label>
+              完整内容（Markdown）
+              <textarea v-model="form.content_markdown" rows="14"></textarea>
+            </label>
             <div class="list-editor grammar-example-editor">
               <div class="list-title">例句</div>
               <div v-for="(example, index) in examples" :key="index" class="list-row">
@@ -244,7 +248,8 @@ const form = reactive({
   meaning: '',
   translation: '',
   formation: '',
-  notes: ''
+  notes: '',
+  content_markdown: ''
 });
 const formErrors = reactive({ grammar: '' });
 
@@ -295,6 +300,7 @@ function resetForm() {
   form.translation = '';
   form.formation = '';
   form.notes = '';
+  form.content_markdown = '';
   examples.value = [];
   formErrors.grammar = '';
 }
@@ -379,6 +385,7 @@ async function openEdit(item) {
     form.translation = data.translation || '';
     form.formation = data.formation || '';
     form.notes = data.notes || '';
+    form.content_markdown = data.content_markdown || '';
     examples.value = [...(data.examples || [])];
     formErrors.grammar = '';
     drawerOpen.value = true;
@@ -413,6 +420,7 @@ function payloadFromForm() {
     translation: form.translation.trim() || null,
     formation: form.formation.trim() || null,
     notes: form.notes.trim() || null,
+    content_markdown: form.content_markdown.trim() || null,
     examples: examples.value
       .map((item) => item.trim())
       .filter(Boolean)

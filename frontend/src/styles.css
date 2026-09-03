@@ -3721,6 +3721,88 @@ button.assignment-return-button:hover {
   margin: 12px 0 0;
 }
 
+.grammar-study-markdown {
+  min-width: 0;
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.grammar-study-markdown> :first-child {
+  margin-top: 0;
+}
+
+.grammar-study-markdown> :last-child {
+  margin-bottom: 0;
+}
+
+.grammar-study-markdown h2,
+.grammar-study-markdown h3,
+.grammar-study-markdown h4 {
+  margin: 22px 0 9px;
+  color: var(--theme-red-dark);
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+
+.grammar-study-markdown h2 {
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(215, 188, 164, 0.62);
+  font-size: 19px;
+}
+
+.grammar-study-markdown h3 {
+  font-size: 18px;
+}
+
+.grammar-study-markdown h4 {
+  font-size: 17px;
+}
+
+.grammar-study-markdown p,
+.grammar-study-markdown ol,
+.grammar-study-markdown ul {
+  margin: 0 0 12px;
+}
+
+.grammar-study-markdown ol,
+.grammar-study-markdown ul {
+  padding-left: 26px;
+}
+
+.grammar-study-markdown li+li {
+  margin-top: 5px;
+}
+
+.grammar-study-markdown-table-scroll {
+  width: 100%;
+  margin: 4px 0 16px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.grammar-study-markdown table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  background: rgba(255, 253, 247, 0.72);
+}
+
+.grammar-study-markdown th,
+.grammar-study-markdown td {
+  padding: 9px 12px;
+  border: 1px solid rgba(178, 145, 117, 0.48);
+  text-align: left !important;
+  vertical-align: top;
+}
+
+.grammar-study-markdown th {
+  background: rgba(247, 232, 205, 0.82);
+  color: var(--theme-red-dark);
+  font-weight: 800;
+}
+
 .grammar-edit-drawer {
   width: min(980px, 96vw);
   max-height: 88vh;

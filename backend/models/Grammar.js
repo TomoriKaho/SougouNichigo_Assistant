@@ -213,11 +213,12 @@ class Grammar {
         formation,
         notes,
         examples_json,
+        content_markdown,
         order_index,
         created_at,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
     `).run(
       Number(payload.textbook_id),
       Number(payload.lesson_id),
@@ -229,6 +230,7 @@ class Grammar {
       normalizeText(payload.formation),
       normalizeText(payload.notes),
       JSON.stringify(normalizeExamples(payload.examples)),
+      normalizeText(payload.content_markdown),
       Number(payload.order_index || 0)
     )
     return result.lastInsertRowid
@@ -245,6 +247,7 @@ class Grammar {
         formation = ?,
         notes = ?,
         examples_json = ?,
+        content_markdown = ?,
         updated_at = datetime('now', 'localtime')
       WHERE id = ?
     `).run(
@@ -255,6 +258,7 @@ class Grammar {
       normalizeText(payload.formation),
       normalizeText(payload.notes),
       JSON.stringify(normalizeExamples(payload.examples)),
+      normalizeText(payload.content_markdown),
       id
     )
   }

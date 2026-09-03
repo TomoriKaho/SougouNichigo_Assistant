@@ -15,6 +15,16 @@ const VOCABULARY_SOURCES = [
     textbookName: '综合日语 第二册',
     orderIndex: 2,
     swapKanaTermWithKanjiSupplement: true
+  },
+  {
+    fileName: '综合日语一单词_第2-12课.json',
+    textbookName: '综合日语 第一册',
+    orderIndex: 3
+  },
+  {
+    fileName: '综合日语三单词_第1-10课.json',
+    textbookName: '综合日语 第三册',
+    orderIndex: 4
   }
 ]
 

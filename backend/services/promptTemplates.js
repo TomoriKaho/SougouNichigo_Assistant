@@ -77,6 +77,17 @@ function formatVocabularyContext(snapshot = {}) {
 }
 
 function formatGrammarContext(snapshot = {}) {
+  const contentMarkdown = String(snapshot.content_markdown || '').trim()
+  if (contentMarkdown) {
+    return `
+【当前文法上下文】
+- 文法：${clean(snapshot.grammar)}
+- 简要逻辑：${clean(snapshot.brief_logic)}
+- 完整讲解（Markdown）：
+${contentMarkdown}
+`.trim()
+  }
+
   const examples = Array.isArray(snapshot.examples) && snapshot.examples.length
     ? snapshot.examples.map((item, index) => `${index + 1}. ${item}`).join('\n')
     : '-'

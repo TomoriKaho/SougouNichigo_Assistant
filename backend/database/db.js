@@ -48,6 +48,25 @@ function ensureColumn(db, table, column, definition) {
   }
 }
 
+function normalizeTextbookOrder(db) {
+  const textbookOrder = [
+    ['综合日语第一册', 1],
+    ['综合日语第二册', 2],
+    ['综合日语第三册', 3],
+    ['综合日语第四册', 4]
+  ]
+  const update = db.prepare(`
+    UPDATE textbooks
+    SET order_index = ?, updated_at = datetime('now', 'localtime')
+    WHERE REPLACE(name, ' ', '') = ?
+      AND COALESCE(order_index, -1) <> ?
+  `)
+
+  db.transaction(() => {
+    textbookOrder.forEach(([name, orderIndex]) => update.run(orderIndex, name, orderIndex))
+  })()
+}
+
 function initUserDatabase() {
   userDb.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -460,6 +479,7 @@ function initVocabularyDatabase() {
   vocabularyDb.exec('CREATE INDEX IF NOT EXISTS idx_vocab_favorites_entry ON vocabulary_favorites(vocabulary_id)')
 
   seedVocabularyFromJson(vocabularyDb)
+  normalizeTextbookOrder(vocabularyDb)
 
   const rows = vocabularyDb.prepare(`
     SELECT id, term, supplement, part_of_speech, explanation
@@ -546,6 +566,7 @@ function initGrammarDatabase() {
       formation TEXT,
       notes TEXT,
       examples_json TEXT DEFAULT '[]',
+      content_markdown TEXT,
       order_index INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT DEFAULT (datetime('now', 'localtime')),
@@ -554,6 +575,8 @@ function initGrammarDatabase() {
       FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE
     )
   `)
+
+  ensureColumn(grammarDb, 'grammar_entries', 'content_markdown', 'content_markdown TEXT')
 
   grammarDb.exec(`
     CREATE TABLE IF NOT EXISTS grammar_favorites (
@@ -577,6 +600,7 @@ function initGrammarDatabase() {
   if (!dbExisted.grammar || total === 0) {
     seedGrammarFromJson(grammarDb)
   }
+  normalizeTextbookOrder(grammarDb)
 }
 
 function initTextDatabase() {
@@ -610,6 +634,7 @@ function initTextDatabase() {
   textDb.exec('CREATE INDEX IF NOT EXISTS idx_text_entries_lesson_unit ON text_entries(lesson_number, unit_number)')
 
   seedTextFromJson(textDb)
+  normalizeTextbookOrder(textDb)
 }
 
 function initReadingMaterialsDatabase() {

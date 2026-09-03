@@ -12,6 +12,16 @@ const TEXT_SOURCES = [
     fileName: 'text_2.json',
     defaultTextbookName: '综合日语 第二册',
     orderIndex: 2
+  },
+  {
+    fileName: '综合日语第一册_课文识别整理.json',
+    defaultTextbookName: '综合日语 第一册',
+    orderIndex: 3
+  },
+  {
+    fileName: '综合日语第三册_课文识别整理.json',
+    defaultTextbookName: '综合日语 第三册',
+    orderIndex: 4
   }
 ]
 
@@ -26,6 +36,8 @@ function normalizeTextbookName(value, fallback = DEFAULT_TEXTBOOK_NAME) {
   if (!text) return fallback
   if (text === '综合日语第四册') return DEFAULT_TEXTBOOK_NAME
   if (text === '综合日语第二册') return '综合日语 第二册'
+  if (text === '综合日语第一册') return '综合日语 第一册'
+  if (text === '综合日语第三册') return '综合日语 第三册'
   return text
 }
 

@@ -6,10 +6,31 @@ const KANA_ONLY_RE = /^[\p{Script=Hiragana}\p{Script=Katakana}ー]+$/u
 const PROPER_NOUN_HINT_RE =
   /(人名|地名|作品名|团体名|團體名|机构名|機構名|组织名|組織名|国名|國名|书名|書名|校名|公司名|出版社名|桥梁名称|橋梁名稱|姓氏)/
 
-const PROPER_NOUN_ROLE_RE =
-  /(日本作家|作家|歌手|漫画家|漫畫家|记者|記者|学者|學者|出版社|公司|大学|大學|书名|書名|团体名|團體名|人名|地名)/
-
 const LOANWORD_EXCLUDE_HINT_RE = /方言/
+
+// These are common nouns or grammatical affixes which can look like proper
+// nouns in a short dictionary gloss but should not be labelled as such.
+const PROPER_NOUN_EXCLUDE_SET = new Set([
+  '-さん',
+  '大学祭',
+  '和英',
+  '英和',
+  'ドル',
+  'カルシウム',
+  'おせち料理',
+  '能狂言',
+  '能',
+  '狂言',
+  '文楽',
+  '幕府',
+  '忘年会',
+  '本学',
+  'カンフー',
+  'マラソン',
+  '和敬清寂',
+  'ムスリム',
+  '歌舞伎'
+])
 
 const ONOMATOPOEIA_INCLUDE_SET = new Set([
   'ぎゃああ',
@@ -38,7 +59,28 @@ const ONOMATOPOEIA_EXCLUDE_SET = new Set([
   'しんしん',
   'どれどれ',
   'やれやれ',
-  'こらこら'
+  'こらこら',
+  'ああ',
+  'ええ',
+  'まだまだ',
+  'ぜんぜん',
+  'いえいえ',
+  'そろそろ',
+  'もしもし',
+  'うーん',
+  'なかなか',
+  'もともと',
+  'つぎつぎ',
+  'ふーん',
+  'いよいよ',
+  'まあまあ',
+  'さあさあ',
+  'これはこれは',
+  'わざわざ',
+  'たびたび',
+  'あらあら',
+  'たまたま',
+  'それはそれは'
 ])
 
 function normalizeText(value) {
@@ -55,13 +97,15 @@ function hasKanji(value) {
 }
 
 function isProperNoun({ term, supplement, partOfSpeech, explanation }) {
+  const normalizedTerm = normalizeText(term)
   const pos = normalizeText(partOfSpeech)
   const exp = normalizeText(explanation)
+  if (PROPER_NOUN_EXCLUDE_SET.has(normalizedTerm)) return false
+  if (/接頭|接尾/.test(pos)) return false
   if (pos.includes('固名')) return true
   if (PROPER_NOUN_HINT_RE.test(exp)) return true
-  if (PROPER_NOUN_ROLE_RE.test(exp) && /[（）()]/.test(exp)) return true
 
-  const combined = `${normalizeText(term)} ${normalizeText(supplement)} ${exp}`
+  const combined = `${normalizedTerm} ${normalizeText(supplement)} ${exp}`
   return /(姓氏|人名|地名|书名|書名|团体名|團體名)/.test(combined)
 }
 

@@ -3,8 +3,6 @@ const { TranslationPractice } = require('../models/TranslationPractice')
 const { User } = require('../models/User')
 const { completeChat } = require('./aiProvider')
 
-const FOURTH_BOOK_NAME = '综合日语 第四册'
-
 const ABILITY_BY_RANGE = {
   '综合日语 第一册:upper': 'N5以内',
   '综合日语 第一册:lower': 'N5到weak N4',
@@ -79,52 +77,62 @@ function rangeKeyFor(textbookName, rangeKey) {
   return `${textbookName}:${rangeKey}`
 }
 
-function currentFourthBook() {
+function textbookById(textbookId) {
+  const normalizedId = Number(textbookId || 0)
+  if (!normalizedId) return null
   return textDb.prepare(`
-    SELECT id, name
+    SELECT id, name, order_index
     FROM textbooks
-    WHERE name = ?
+    WHERE id = ?
     LIMIT 1
-  `).get(FOURTH_BOOK_NAME)
+  `).get(normalizedId)
 }
 
-function fourthBookMaxLesson() {
-  const row = textDb.prepare(`
-    SELECT MAX(e.lesson_number) AS max_lesson
-    FROM text_entries e
-    JOIN textbooks t ON t.id = e.textbook_id
-    WHERE t.name = ?
-  `).get(FOURTH_BOOK_NAME)
-  return Number(row?.max_lesson || 10)
+function textbooksWithTexts() {
+  return textDb.prepare(`
+    SELECT t.id, t.name, t.order_index
+    FROM textbooks t
+    WHERE EXISTS (
+      SELECT 1
+      FROM text_entries e
+      WHERE e.textbook_id = t.id
+    )
+    ORDER BY t.order_index ASC, t.id ASC
+  `).all()
 }
 
-function fourthBookLessonNumbers() {
+function lessonNumbersForTextbook(textbookId) {
   return textDb.prepare(`
     SELECT DISTINCT e.lesson_number
     FROM text_entries e
-    JOIN textbooks t ON t.id = e.textbook_id
-    WHERE t.name = ?
+    WHERE e.textbook_id = ?
     ORDER BY e.lesson_number ASC
-  `).all(FOURTH_BOOK_NAME)
+  `).all(Number(textbookId))
     .map((row) => Number(row.lesson_number))
     .filter((lessonNumber) => Number.isFinite(lessonNumber) && lessonNumber > 0)
 }
 
-function resolveRange(rangeKey = 'upper') {
-  const textbook = currentFourthBook()
+function resolveRange(textbookId, rangeKey = 'upper') {
+  const textbook = textbookById(textbookId)
   if (!textbook) {
-    const error = new Error('目前尚未录入第四册课文')
+    const error = new Error('所选教材不存在')
     error.status = 404
     throw error
   }
 
-  const maxLesson = fourthBookMaxLesson()
+  const lessonNumbers = lessonNumbersForTextbook(textbook.id)
+  if (!lessonNumbers.length) {
+    const error = new Error('所选教材尚未录入课文')
+    error.status = 400
+    throw error
+  }
+  const maxLesson = lessonNumbers[lessonNumbers.length - 1]
   const split = Math.ceil(maxLesson / 2)
   const rawRangeKey = String(rangeKey || '').trim()
   const lessonMatch = rawRangeKey.match(/^lesson:(\d+)$/)
   if (lessonMatch) {
     const lessonNumber = Number(lessonMatch[1])
-    if (!fourthBookLessonNumbers().includes(lessonNumber)) {
+    if (!lessonNumbers.includes(lessonNumber)) {
       const error = new Error('所选课次不存在')
       error.status = 400
       throw error
@@ -142,8 +150,16 @@ function resolveRange(rangeKey = 'upper') {
   }
 
   const normalized = rawRangeKey === 'lower' ? 'lower' : 'upper'
-  const lessonMin = normalized === 'lower' ? split + 1 : 1
-  const lessonMax = normalized === 'lower' ? maxLesson : split
+  const lessonsInRange = lessonNumbers.filter((lessonNumber) => (
+    normalized === 'lower' ? lessonNumber > split : lessonNumber <= split
+  ))
+  if (!lessonsInRange.length) {
+    const error = new Error('所选教材没有对应范围的课文')
+    error.status = 400
+    throw error
+  }
+  const lessonMin = lessonsInRange[0]
+  const lessonMax = lessonsInRange[lessonsInRange.length - 1]
   const rangeLabel = normalized === 'lower' ? '下半' : '上半'
 
   return {
@@ -158,15 +174,20 @@ function resolveRange(rangeKey = 'upper') {
 }
 
 function listRangeOptions() {
-  const range = resolveRange('upper')
-  const lower = resolveRange('lower')
-  const lessons = fourthBookLessonNumbers().map((lessonNumber) => resolveRange(`lesson:${lessonNumber}`))
-  return {
-    ranges: [
-      { ...range, label: `${range.textbookName} ${range.rangeLabel}` },
+  const ranges = []
+  textbooksWithTexts().forEach((textbook) => {
+    const lessonNumbers = lessonNumbersForTextbook(textbook.id)
+    const upper = resolveRange(textbook.id, 'upper')
+    const lower = resolveRange(textbook.id, 'lower')
+    const lessons = lessonNumbers.map((lessonNumber) => resolveRange(textbook.id, `lesson:${lessonNumber}`))
+    ranges.push(
+      { ...upper, label: `${upper.textbookName} ${upper.rangeLabel}` },
       { ...lower, label: `${lower.textbookName} ${lower.rangeLabel}` },
       ...lessons.map((lesson) => ({ ...lesson, label: `${lesson.textbookName} ${lesson.rangeLabel}` }))
-    ],
+    )
+  })
+  return {
+    ranges,
     abilityModel: [
       { range: '综合日语第一册上半', ability: 'N5以内' },
       { range: '综合日语第一册下半', ability: 'N5到weak N4' },
@@ -550,9 +571,9 @@ function normalizeReview(parsed) {
   }
 }
 
-async function generatePractice({ userId, rangeKey, directionMode, difficultyMode }) {
+async function generatePractice({ userId, textbookId, rangeKey, directionMode, difficultyMode }) {
   const user = User.findById(userId)
-  const range = resolveRange(rangeKey)
+  const range = resolveRange(textbookId, rangeKey)
   const normalizedDirectionMode = normalizeDirectionMode(directionMode)
   const normalizedDifficultyMode = normalizeDifficultyMode(difficultyMode)
   const reusableSet = TranslationPractice.findReusableQuestionSet({

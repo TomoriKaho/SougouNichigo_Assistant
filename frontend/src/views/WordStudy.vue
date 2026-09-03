@@ -254,8 +254,19 @@ const selectedLesson = computed(() => lessonOptions.value.find((item) => Number(
 const unitOptions = computed(() => (selectedLesson.value ? selectedLesson.value.units || [] : []));
 const lessonFilterAll = computed(() => !selectedLesson.value);
 const lessonRange = computed(() => {
-  if (filters.lessonScope === 'firstHalf') return { min: 1, max: 5 };
-  if (filters.lessonScope === 'secondHalf') return { min: 6, max: 10 };
+  const lessonNumbers = lessonOptions.value
+    .map((lesson) => Number(lesson.lesson_number || 0))
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+  if (!lessonNumbers.length) return { min: '', max: '' };
+
+  const splitLessonNumber = Math.ceil(lessonNumbers[lessonNumbers.length - 1] / 2);
+  if (filters.lessonScope === 'firstHalf') {
+    return { min: lessonNumbers[0], max: splitLessonNumber };
+  }
+  if (filters.lessonScope === 'secondHalf') {
+    return { min: splitLessonNumber + 1, max: lessonNumbers[lessonNumbers.length - 1] };
+  }
   return { min: '', max: '' };
 });
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
